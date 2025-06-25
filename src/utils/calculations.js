@@ -310,9 +310,24 @@ export function saveScenario(name, params, yearInputs) {
 export function getSavedScenarios() {
   try {
     const saved = localStorage.getItem('portfolioScenarios');
-    return saved ? JSON.parse(saved) : {};
+    if (!saved) return {};
+    
+    const parsed = JSON.parse(saved);
+    if (typeof parsed !== 'object' || parsed === null) {
+      console.warn('Invalid saved scenarios data, clearing localStorage');
+      localStorage.removeItem('portfolioScenarios');
+      return {};
+    }
+    
+    return parsed;
   } catch (error) {
     console.error('Fel vid läsning av sparade scenarier:', error);
+    // Rensa korrupt data
+    try {
+      localStorage.removeItem('portfolioScenarios');
+    } catch (e) {
+      console.error('Kunde inte rensa localStorage:', e);
+    }
     return {};
   }
 }
@@ -455,7 +470,12 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
 
   // --- ÅR 0 ---
   // 0.1: Före investering
-  let marketValue0 = params.initialMarketValue + currentCash;
+  // Beräkna substansrabatt för år 0 baserat på angivet marknadsvärde och substansvärde
+  // För år 0: Substansrabatt = (1 - Marknadsvärde/Substansvärde) * 100
+  const calculatedSubstanceDiscount0 = (1 - params.initialMarketValue / currentSubstanceValue) * 100;
+  // Använd den beräknade substansrabatten för alla beräkningar år 0
+  let marketValue0 = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + currentCash;
+  
   let totalShares0 = Number(antalAktier);
   results.push({
     year: 0,
@@ -470,7 +490,7 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     exit: 0,
     investment: 0,
     growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
-    substanceDiscount: yearInputs[0]?.substanceDiscount ?? params.substanceDiscount,
+    substanceDiscount: calculatedSubstanceDiscount0,
     totalShares: totalShares0,
     sharePrice: Number(aktiePris),
     simOwnerShares
@@ -483,7 +503,8 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
   let newShares = 0;
   if (initialNewIssue > 0) {
     currentCash += initialNewIssue;
-    const preMoneyValue = (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) * currentSubstanceValue + (currentCash - initialNewIssue);
+    // Använd den beräknade substansrabatten för år 0
+    const preMoneyValue = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + (currentCash - initialNewIssue);
     const postMoneyValue = preMoneyValue + initialNewIssue;
     const dilutionFactor = preMoneyValue / postMoneyValue;
     currentOwnershipShare *= dilutionFactor;
@@ -495,7 +516,8 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     // simOwnerShares ändras INTE om simulerad ägare inte deltar i emissionen
     simOwnerShares = newShares;
   }
-  let marketValue1 = params.initialMarketValue + (initialNewIssue > 0 ? initialNewIssue : 0);
+  // Beräkna marknadsvärde efter investering med den beräknade substansrabatten
+  let marketValue1 = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + currentCash;
   let totalShares1 = totalShares;
   results.push({
     year: 0,
@@ -510,7 +532,7 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     exit: 0,
     investment: 0,
     growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
-    substanceDiscount: yearInputs[0]?.substanceDiscount ?? params.substanceDiscount,
+    substanceDiscount: calculatedSubstanceDiscount0,
     totalShares: totalShares1,
     sharePrice: totalShares1 > 0 ? (marketValue1 * 1_000_000) / totalShares1 : 0,
     simOwnerShares,

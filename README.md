@@ -52,6 +52,9 @@ Substansvärde = Initialt substansvärde + Nyemissioner + Tillväxt - Förvaltni
 Marknadsvärde = Substansvärde × (1 - Substansrabatt/100) + Kassa
 ```
 
+- **För år 0**: Substansrabatten beräknas automatiskt som `(1 - Marknadsvärde / Substansvärde) × 100` och kan inte redigeras manuellt.
+- **För år 1 och framåt**: Substansrabatten anges i inputfältet och används för att beräkna marknadsvärdet.
+
 #### Andelsvärde
 ```
 Andelsvärde = Ägarandel (%) × Marknadsvärde
@@ -137,10 +140,12 @@ Ny ägarandel = Gammal ägarandel × Utspädningsfaktor
 
 #### 5-årig graf med olika tillväxtscenarier
 ```
-För varje tillväxtnivå (0% till 200% av standardtillväxt):
-- Beräkna tillväxtbelopp = (Standard tillväxt × Tillväxt%) / 100
+För varje tillväxtnivå (0% till 200% av break-even ökning):
+- Beräkna tillväxtbelopp = (Break-even ökning × Tillväxt%) / 100
 - Simulera 10 år med denna tillväxt
 - Spara resultat för varje år
+
+Notera: Break-even beräknas internt för diagramdata men visas inte i UI eller export.
 ```
 
 ### Export-funktioner

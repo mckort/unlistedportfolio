@@ -66,6 +66,7 @@ function App() {
   // Standardvärden enligt specifikationen
   const defaultParams = {
     initialNav: 50,            // MSEK
+    initialMarketValue: 10,    // MSEK (nu användarinput)
     substanceDiscount: 80,     // %
     ownershipShare: 10,        // %
     newIssueAmount: 5,         // MSEK
@@ -219,6 +220,17 @@ function App() {
       setSaveMessage('Scenario borttaget!');
     } else {
       setSaveMessage('Fel vid borttagning: ' + result.error);
+    }
+  };
+
+  // Rensa localStorage
+  const handleClearLocalStorage = () => {
+    try {
+      localStorage.clear();
+      setSavedScenarios({});
+      setSaveMessage('localStorage rensat!');
+    } catch (error) {
+      setSaveMessage('Fel vid rensning av localStorage: ' + error.message);
     }
   };
 
@@ -494,7 +506,7 @@ function App() {
     // Dataset 1: Original investerare (från år 0)
     datasets.push({
       label: 'Original investerare (år 0)',
-      data: customResults.map(result => ({
+      data: customResults.filter(r => r.step === 'efter investering').map(result => ({
         x: result.year,
         y: result.percentageChange,
         newIssue: result.newIssue,
@@ -523,44 +535,51 @@ function App() {
       '#f43f5e'  // Rose
     ];
     
-    // Ny logik: hitta alla emissioner på 'efter investering'-rader
+    // Hitta alla emissioner på 'efter investering'-rader
     customResults.forEach((entryResult, idx) => {
       if (entryResult.step === 'efter investering' && entryResult.newIssue && entryResult.newIssue > 0) {
         const entryYear = entryResult.year;
         const entryInvestment = entryResult.newIssue;
-        const preMoneyValue = entryResult.marketValue;
-        const postMoneyValue = preMoneyValue + entryInvestment;
-        // Ägarandel EFTER emissionen de deltar i
+        
+        // Beräkna ägarandel för denna investerare
+        const preMoneyValue = entryResult.marketValue - entryInvestment; // Marknadsvärde FÖRE emissionen
+        const postMoneyValue = entryResult.marketValue; // Marknadsvärde EFTER emissionen
         const initialOwnershipShare = (entryInvestment / postMoneyValue) * 100;
+        
         let currentOwnershipShare = initialOwnershipShare;
-        let entryValue = entryInvestment;
         const entryData = [];
+        
+        // Följ denna investerare från inträdesåret till år 10
         for (let year = entryYear; year <= 10; year++) {
-          // Hitta 'efter investering'-raden för detta år
           const yearResult = customResults.find(r => r.year === year && r.step === 'efter investering');
           if (yearResult) {
             // Utspäd endast av emissioner EFTER inträdesåret
             if (year > entryYear && yearResult.newIssue && yearResult.newIssue > 0) {
-              const preMoneyValueDil = yearResult.marketValue;
-              const postMoneyValueDil = preMoneyValueDil + yearResult.newIssue;
+              const preMoneyValueDil = yearResult.marketValue - yearResult.newIssue;
+              const postMoneyValueDil = yearResult.marketValue;
               const dilutionFactor = preMoneyValueDil / postMoneyValueDil;
               currentOwnershipShare *= dilutionFactor;
             }
+            
+            // Beräkna nuvarande värde på investerarens andelar
             const currentValue = (currentOwnershipShare / 100) * yearResult.marketValue;
-            const percentageChange = ((currentValue - entryValue) / entryValue) * 100;
+            const percentageChange = ((currentValue - entryInvestment) / entryInvestment) * 100;
+            
             entryData.push({
               x: year,
               y: percentageChange,
               newIssue: yearResult.newIssue,
               dilution: yearResult.dilution,
-              ownershipShare: currentOwnershipShare
+              ownershipShare: currentOwnershipShare,
+              currentValue: currentValue
             });
           }
         }
+        
         if (entryData.length > 0) {
           const color = colors[entryYear - 1] || '#6b7280';
           datasets.push({
-            label: `Ny investerare (år ${entryYear})`,
+            label: `Ny investerare (år ${entryYear}) - ${entryInvestment} MSEK`,
             data: entryData,
             borderColor: color,
             backgroundColor: `${color}20`,
@@ -647,6 +666,9 @@ function App() {
             min="0"
             max="100"
           />
+          <div style={{ fontSize: '0.85em', color: '#666', marginTop: '0.5rem' }}>
+            Beräknad substansrabatt år 0: {((1 - params.initialMarketValue / params.initialNav) * 100).toFixed(1)}%
+          </div>
         </div>
 
         <div className="form-group">
@@ -740,6 +762,9 @@ function App() {
         </button>
         <button className="btn-secondary" onClick={() => setShowLoadDialog(true)}>
           Ladda Scenario
+        </button>
+        <button className="btn-secondary" onClick={handleClearLocalStorage}>
+          Rensa localStorage
         </button>
         {results && (
           <button className="btn-export" onClick={handleExport}>
@@ -879,15 +904,20 @@ function App() {
                         ) : ''}
                       </td>
                       <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                        <input
-                          type="number"
-                          value={yearInputs[Math.floor(index/2)]?.substanceDiscount ?? ''}
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                          onChange={e => handleYearInputChange(Math.floor(index/2), 'substanceDiscount', e.target.value)}
-                        />
+                        {result.year === 0
+                          ? result.substanceDiscount.toFixed(1)
+                          : (
+                            <input
+                              type="number"
+                              value={yearInputs[Math.floor(index/2)]?.substanceDiscount ?? ''}
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                              onChange={e => handleYearInputChange(Math.floor(index/2), 'substanceDiscount', e.target.value)}
+                            />
+                          )
+                        }
                       </td>
                       <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.step === 'efter investering' ? (result.dilution ? result.dilution.toFixed(1) : '-') : ''}</td>
                       <td style={{ textAlign: 'center', padding: '6px 4px' }}>
