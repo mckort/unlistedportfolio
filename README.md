@@ -29,6 +29,127 @@ En avancerad webapp för att simulera värdetillväxt och utspädning i en portf
 - **Spara/ladda scenarier** (inklusive alla tabellrader och parametrar)
 - Återställ till standardvärden
 
+## Formler och Beräkningar
+
+### Grundläggande Begrepp
+
+#### Substansvärde (NAV - Net Asset Value)
+```
+Substansvärde = Initialt substansvärde + Nyemissioner + Tillväxt - Förvaltningskostnader + Investeringar - Exits
+```
+
+#### Marknadsvärde
+```
+Marknadsvärde = Substansvärde × (1 - Substansrabatt/100) + Kassa
+```
+
+#### Andelsvärde
+```
+Andelsvärde = Ägarandel (%) × Marknadsvärde
+```
+
+### Utspädning vid Nyemissioner
+
+#### Pre-money och Post-money värde
+```
+Pre-money värde = Marknadsvärde före emission
+Post-money värde = Pre-money värde + Nyemissionsbelopp
+```
+
+#### Utspädningsfaktor
+```
+Utspädningsfaktor = Pre-money värde / Post-money värde
+Ny ägarandel = Gammal ägarandel × Utspädningsfaktor
+Procentuell utspädning = (1 - Utspädningsfaktor) × 100
+```
+
+#### Antal nya aktier
+```
+Pris per aktie före emission = Pre-money värde × 1,000,000 / Antal aktier
+Antal nya aktier = Nyemissionsbelopp × 1,000,000 / Pris per aktie före emission
+```
+
+### Break-even Beräkning
+
+#### Break-even formel (1 år)
+```
+Break-even substansvärde = Initialt marknadsvärde × 3 / 0.4
+Break-even ökning = Break-even substansvärde - Substansvärde efter kostnader
+Break-even ökning (%) = (Break-even ökning / Substansvärde efter kostnader) × 100
+```
+
+### IRR (Internal Rate of Return)
+
+#### Förenklad IRR-beräkning
+```
+IRR = (Slutvärde - Initial investering - Förvaltningskostnader) / Initial investering × 100
+```
+
+#### Avancerad IRR-beräkning (Newton-Raphson)
+För mer komplexa kassaflöden används Newton-Raphson-metoden:
+```
+NPV = Σ(CFt / (1 + r)^t) = 0
+dNPV/dr = Σ(-t × CFt / (1 + r)^(t+1))
+r_new = r_old - NPV / dNPV/dr
+```
+
+### Procentuell Förändring
+```
+Procentuell förändring = ((Nytt andelsvärde - Initialt andelsvärde) / Initialt andelsvärde) × 100
+```
+
+### Årlig Simulering
+
+#### Steg 1: Tillväxt och Kostnader
+```
+Substansvärde efter tillväxt = Tidigare substansvärde × (1 + Tillväxt%/100)
+Kassa efter kostnader = Tidigare kassa - Förvaltningskostnader
+```
+
+#### Steg 2: Exit och Investeringar
+```
+Kassa efter exit = Kassa + Exitbelopp
+Substansvärde efter exit = Substansvärde - Exitbelopp
+Kassa efter investering = Kassa - Investeringsbelopp
+Substansvärde efter investering = Substansvärde + Investeringsbelopp
+```
+
+#### Steg 3: Nyemission (om kassa < förvaltningskostnader)
+```
+Pre-money värde = Marknadsvärde före emission
+Post-money värde = Pre-money värde + Nyemissionsbelopp
+Utspädningsfaktor = Pre-money värde / Post-money värde
+Ny ägarandel = Gammal ägarandel × Utspädningsfaktor
+```
+
+### Validering av Inmatningsparametrar
+
+#### Tillåtna värden
+- **Initialt marknadsvärde**: > 0
+- **Initialt substansvärde**: > 0
+- **Substansrabatt**: 0-100%
+- **Ägarandel**: 0-100%
+- **Nyemissionsbelopp**: ≥ 0
+- **Förvaltningskostnader**: ≥ 0
+- **Substansökning**: ≥ 0
+
+### Grafdata Generering
+
+#### 5-årig graf med olika tillväxtscenarier
+```
+För varje tillväxtnivå (0% till 200% av break-even):
+- Beräkna tillväxtbelopp = (Break-even ökning × Tillväxt%) / 100
+- Simulera 10 år med denna tillväxt
+- Spara resultat för varje år
+```
+
+### Export-funktioner
+
+#### CSV-export innehåller:
+- **Sammanfattning för investerare**: Investerat belopp, ägarandel efter emission, ägarandel efter 10 år, värde efter 10 år, IRR
+- **Kassaflöden för IRR**: Array med alla kassaflöden för IRR-beräkning
+- **Slutvärden**: Substansvärde, marknadsvärde, andelsvärde, procentuell förändring
+
 ## Installation & Körning
 
 ### Förutsättningar
