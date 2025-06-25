@@ -78,15 +78,6 @@ Pris per aktie före emission = Pre-money värde × 1,000,000 / Antal aktier
 Antal nya aktier = Nyemissionsbelopp × 1,000,000 / Pris per aktie före emission
 ```
 
-### Break-even Beräkning
-
-#### Break-even formel (1 år)
-```
-Break-even substansvärde = Initialt marknadsvärde × 3 / 0.4
-Break-even ökning = Break-even substansvärde - Substansvärde efter kostnader
-Break-even ökning (%) = (Break-even ökning / Substansvärde efter kostnader) × 100
-```
-
 ### IRR (Internal Rate of Return)
 
 #### Förenklad IRR-beräkning
@@ -146,8 +137,8 @@ Ny ägarandel = Gammal ägarandel × Utspädningsfaktor
 
 #### 5-årig graf med olika tillväxtscenarier
 ```
-För varje tillväxtnivå (0% till 200% av break-even):
-- Beräkna tillväxtbelopp = (Break-even ökning × Tillväxt%) / 100
+För varje tillväxtnivå (0% till 200% av standardtillväxt):
+- Beräkna tillväxtbelopp = (Standard tillväxt × Tillväxt%) / 100
 - Simulera 10 år med denna tillväxt
 - Spara resultat för varje år
 ```

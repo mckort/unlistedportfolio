@@ -224,8 +224,8 @@ function App() {
 
   // Exportera till CSV
   const handleExport = () => {
-    if (results && breakEven && customResults && yearInputs) {
-      exportToCSV(params, results, breakEven, antalAktier, aktiePris, customResults, yearInputs);
+    if (results && customResults && yearInputs) {
+      exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs);
     }
   };
 

@@ -352,13 +352,12 @@ export function deleteScenario(name) {
  * Exporterar resultat som CSV
  * @param {Object} params - Inmatningsparametrar
  * @param {Object} results - Beräkningsresultat
- * @param {Object} breakEven - Break-even resultat
  * @param {number} antalAktier - Antal aktier i portföljen
  * @param {number} aktiePris - Aktiepriset i portföljen
  * @param {Array} customResults - Array med custom-resultat för varje år
  * @param {Array} yearInputs - Array med custom-parametrar för varje år
  */
-export function exportToCSV(params, results, breakEven, antalAktier, aktiePris, customResults, yearInputs) {
+export function exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs) {
   const initialMarketValue = params.initialMarketValue ?? (antalAktier * aktiePris / 1_000_000);
 
   // Sammanfattning för investerare i första nyemissionen (år 0)
