@@ -167,10 +167,10 @@ Första raden: Pris per aktie = inmatat värde (SEK)
 - Node.js (v16+)
 - npm
 
-### Kom igång
+### Lokal utveckling
 ```bash
 git clone <repository-url>
-cd investment-co
+cd unlistedportfolio
 npm install
 npm run dev
 ```
@@ -182,15 +182,57 @@ npm run build
 npm run preview
 ```
 
-### Docker & Google Cloud Run
-- Bygg och kör med Docker:
+## Deployment
+
+### Docker (Lokal testning)
 ```bash
-docker build -t portfoljsimulator .
-docker run -p 8080:8080 portfoljsimulator
+# Bygg Docker-image
+docker buildx build --platform=linux/amd64 -t unlistedportfolio .
+
+# Kör lokalt för testning
+docker run -p 8080:8080 unlistedportfolio
 ```
-- Deploy till Google Cloud Run:
-  - Fyll i `.env` enligt `env.example`
-  - Kör `./deploy.sh`
+Öppna [http://localhost:8080](http://localhost:8080) för att testa
+
+### Google Cloud Run Deployment
+
+#### Förutsättningar
+- Google Cloud CLI installerat och konfigurerat
+- Docker installerat
+- Behörighet att deploya till Google Cloud Run
+
+#### Snabb deployment med deploy-script
+```bash
+# 1. Konfigurera miljövariabler
+cp env.example .env
+# Redigera .env med dina Google Cloud-inställningar
+
+# 2. Kör deployment-scriptet
+./deploy.sh
+```
+
+#### Manuell deployment
+```bash
+# 1. Sätt ditt Google Cloud-projekt
+gcloud config set project [DITT-PROJEKT-ID]
+
+# 2. Bygg och pusha Docker-image
+docker buildx build --platform=linux/amd64 -t gcr.io/[PROJEKT-ID]/unlistedportfolio .
+docker push gcr.io/[PROJEKT-ID]/unlistedportfolio
+
+# 3. Deploy till Cloud Run
+gcloud run deploy unlistedportfolio \
+  --image gcr.io/[PROJEKT-ID]/unlistedportfolio \
+  --platform managed \
+  --region europe-north1 \
+  --allow-unauthenticated \
+  --port 8080
+```
+
+#### Felsökning av Cloud Run-deployment
+- **Plattformsfel**: Se till att bygga med `--platform=linux/amd64` på Apple Silicon
+- **Port-fel**: Appen måste lyssna på port 8080 (hanteras av Dockerfile)
+- **Behörighetsfel**: Kontrollera att du har `run.services.get` och `run.services.create` behörigheter
 
 ## Teknisk översikt
 
@@ -198,18 +240,8 @@ docker run -p 8080:8080 portfoljsimulator
 - **Vite** – Byggverktyg
 - **Chart.js** – Diagram
 - **CSS3** – Styling
-- **Projektstruktur:**
-```
-src/
-  utils/calculations.js   # All beräkningslogik, simulering, export mm
-  App.jsx                 # Huvudkomponent, tabell, graf, UI
-  main.jsx                # React entry point
-  index.css               # Styling
-```
-- **Beräkningsmodul:**
-  - `simulateCustomYears()` – Simulerar hela tabellen/scenariot
-  - `exportToCSV()` – Exporterar robust CSV med sammanfattning
-  - `validateInputs()`, `calculateResults()`, mm
+- **Docker** – Containerisering
+- **Google Cloud Run** – Serverless hosting
 
 ## Exempel på användning
 - Ändra nyemission, tillväxt, exit eller investering för valfritt år
