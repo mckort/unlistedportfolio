@@ -14,11 +14,6 @@ if [ -z "$GOOGLE_PROJECT_ID" ]; then
     exit 1
 fi
 
-if [ -z "$GOOGLE_SERVICE_ACCOUNT_EMAIL" ]; then
-    echo "❌ Error: GOOGLE_SERVICE_ACCOUNT_EMAIL environment variable is not set"
-    echo "Please set it in your .env file or export it in your shell"
-    exit 1
-fi
 
 # Check Docker-related environment variables
 if [ -z "$DOCKER_REPO" ]; then
@@ -46,25 +41,26 @@ if [ -z "$CLOUD_RUN_SERVICE_NAME" ]; then
 fi
 
 echo "✅ All required environment variables are set"
-echo "🔐 Service Account: $GOOGLE_SERVICE_ACCOUNT_EMAIL"
 echo "🐳 Docker Repo: $DOCKER_REPO"
 echo "📦 Image Name: $IMAGE_NAME"
 echo "🏷️  Image Tag: $IMAGE_TAG"
+echo "🔨 Cloud Run Service Name: $CLOUD_RUN_SERVICE_NAME"
 
 IMAGE="europe-north1-docker.pkg.dev/$GOOGLE_PROJECT_ID/$DOCKER_REPO/$IMAGE_NAME:$IMAGE_TAG"
 
 echo "🔨 Building Docker image..."
-docker build -t $IMAGE_NAME:$IMAGE_TAG .
+docker build --no-cache -t$IMAGE_NAME:$IMAGE_TAG .
 docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE
 
 echo "📤 Pushing image to Google Container Registry..."
 docker push $IMAGE
 
 echo "🚀 Deploying to Google Cloud Run..."
-gcloud run deploy $CLOUD_RUN_SERVICE_NAME \   #mcp-marketing
+gcloud run deploy $CLOUD_RUN_SERVICE_NAME \
     --image $IMAGE \
     --platform managed \
     --region europe-north1 \
-    --allow-unauthenticated \
+    --allow-unauthenticated 
+    --verbosity=debug
 
 echo "✅ Deployment completed successfully!"
