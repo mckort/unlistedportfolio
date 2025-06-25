@@ -29,6 +29,15 @@ En avancerad webapp för att simulera värdetillväxt och utspädning i en portf
 - **Spara/ladda scenarier** (inklusive alla tabellrader och parametrar)
 - Återställ till standardvärden
 
+## Tabellkolumner och Beräkningslogik
+
+- **Initialt marknadsvärde (MSEK):** Sätts alltid av användaren och används som startvärde år 0 i simuleringen.
+- **Pris per aktie (SEK):**
+  - Första raden (år 0, innan investering): Visar det inmatade priset per aktie.
+  - Övriga rader: Beräknas som Marknadsvärde (SEK) / Totala antalet aktier för respektive rad.
+- **Andelsvärde simulerad ägare (MSEK):** Nytt kolumnnamn (tidigare "Andelsvärde (MSEK)").
+- **Marknadsvärde år 0:** Sätts alltid till det initiala marknadsvärdet som användaren anger, inte ett statiskt värde.
+
 ## Formler och Beräkningar
 
 ### Grundläggande Begrepp
@@ -149,6 +158,12 @@ För varje tillväxtnivå (0% till 200% av break-even):
 - **Sammanfattning för investerare**: Investerat belopp, ägarandel efter emission, ägarandel efter 10 år, värde efter 10 år, IRR
 - **Kassaflöden för IRR**: Array med alla kassaflöden för IRR-beräkning
 - **Slutvärden**: Substansvärde, marknadsvärde, andelsvärde, procentuell förändring
+
+### Pris per aktie (SEK)
+```
+Första raden: Pris per aktie = inmatat värde (SEK)
+Övriga rader: Pris per aktie = Marknadsvärde (MSEK) * 1 000 000 / Totala antalet aktier
+```
 
 ## Installation & Körning
 

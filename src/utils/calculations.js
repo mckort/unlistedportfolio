@@ -455,14 +455,16 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
   let simOwnerShares = Math.round(Number(antalAktier) * currentOwnershipShare);
 
   // --- ÅR 0 ---
-  // 0.1: Före investering - använd värdena från formuläret
+  // 0.1: Före investering
+  let marketValue0 = params.initialMarketValue + currentCash;
+  let totalShares0 = Number(antalAktier);
   results.push({
     year: 0,
     step: 'innan investering',
     substanceValue: currentSubstanceValue,
-    marketValue: currentSubstanceValue * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash,
+    marketValue: marketValue0,
     ownershipShare: currentOwnershipShare * 100,
-    shareValue: currentOwnershipShare * ((1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) * currentSubstanceValue + currentCash),
+    shareValue: currentOwnershipShare * marketValue0,
     cash: currentCash,
     newIssue: null,
     dilution: null,
@@ -470,8 +472,8 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     investment: 0,
     growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
     substanceDiscount: yearInputs[0]?.substanceDiscount ?? params.substanceDiscount,
-    totalShares: antalAktier, // Använd initialt antal aktier från formuläret
-    sharePrice: aktiePris, // Använd initialt aktiepris från formuläret
+    totalShares: totalShares0,
+    sharePrice: Number(aktiePris),
     simOwnerShares
   });
 
@@ -491,30 +493,18 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     const pricePerShareBefore = Number(preMoneyValue) * 1_000_000 / Number(oldShares);
     newShares = Math.round(Number(initialNewIssue) * 1_000_000 / pricePerShareBefore);
     totalShares = Number(oldShares) + Number(newShares);
-    sharePrice = postMoneyValue / totalShares;
-    // Debug log
-    console.log('Emission år 0:', {
-      year: 0,
-      oldShares,
-      newShares,
-      totalShares,
-      pricePerShareBefore,
-      typeof_oldShares: typeof oldShares,
-      typeof_newShares: typeof newShares,
-      typeof_totalShares: typeof totalShares,
-      typeof_pricePerShareBefore: typeof pricePerShareBefore
-    });
     // simOwnerShares ändras INTE om simulerad ägare inte deltar i emissionen
     simOwnerShares = newShares;
   }
-  
+  let marketValue1 = params.initialMarketValue + (initialNewIssue > 0 ? initialNewIssue : 0);
+  let totalShares1 = totalShares;
   results.push({
     year: 0,
     step: 'efter investering',
     substanceValue: currentSubstanceValue,
-    marketValue: currentSubstanceValue * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash,
+    marketValue: marketValue1,
     ownershipShare: currentOwnershipShare * 100,
-    shareValue: currentOwnershipShare * ((1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) * currentSubstanceValue + currentCash),
+    shareValue: currentOwnershipShare * marketValue1,
     cash: currentCash,
     newIssue: initialNewIssue > 0 ? initialNewIssue : null,
     dilution: initialDilution,
@@ -522,8 +512,8 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     investment: 0,
     growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
     substanceDiscount: yearInputs[0]?.substanceDiscount ?? params.substanceDiscount,
-    totalShares,
-    sharePrice,
+    totalShares: totalShares1,
+    sharePrice: totalShares1 > 0 ? (marketValue1 * 1_000_000) / totalShares1 : 0,
     simOwnerShares,
     oldShares,
     newShares
@@ -559,13 +549,15 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     currentCash -= managementCosts;
 
     // --- Innan investering ---
+    const marketValueBefore = currentSubstanceValue * (1 - substanceDiscount / 100) + currentCash;
+    const totalSharesBefore = totalShares;
     results.push({
       year,
       step: 'innan investering',
       substanceValue: currentSubstanceValue,
-      marketValue: currentSubstanceValue * (1 - substanceDiscount / 100) + currentCash,
+      marketValue: marketValueBefore,
       ownershipShare: currentOwnershipShare * 100,
-      shareValue: currentOwnershipShare * ((1 - substanceDiscount / 100) * currentSubstanceValue + currentCash),
+      shareValue: currentOwnershipShare * marketValueBefore,
       cash: currentCash,
       newIssue: null,
       dilution: null,
@@ -574,8 +566,8 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
       growth: growthPercent,
       substanceDiscount,
       percentageChange: null,
-      totalShares,
-      sharePrice: ((1 - substanceDiscount / 100) * currentSubstanceValue + currentCash) / totalShares,
+      totalShares: totalSharesBefore,
+      sharePrice: totalSharesBefore > 0 ? (marketValueBefore * 1_000_000) / totalSharesBefore : 0,
       simOwnerShares
     });
 
@@ -594,7 +586,7 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
       const pricePerShareBefore = Number(preMoneyValue) * 1_000_000 / Number(oldShares);
       newShares = Math.round(Number(newIssue) * 1_000_000 / pricePerShareBefore);
       totalShares = Number(oldShares) + Number(newShares);
-      sharePrice = postMoneyValue / totalShares;
+      sharePrice = (params.initialMarketValue + (newIssue > 0 ? newIssue : 0)) / totalShares;
       // Debug log
       console.log('Emission:', {
         year,
@@ -612,6 +604,7 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
 
     // --- Efter investering ---
     const marketValueAfter = (1 - substanceDiscount / 100) * currentSubstanceValue + currentCash;
+    const totalSharesAfter = totalShares;
     const newMarketValueAfter = currentSubstanceValue * (1 - substanceDiscount / 100) + currentCash;
     const shareValueAfter = currentOwnershipShare * marketValueAfter;
     results.push({
@@ -629,8 +622,8 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
       growth: growthPercent,
       substanceDiscount,
       percentageChange: ((shareValueAfter - totalInvested) / totalInvested) * 100,
-      totalShares,
-      sharePrice: marketValueAfter / totalShares,
+      totalShares: totalSharesAfter,
+      sharePrice: totalSharesAfter > 0 ? (marketValueAfter * 1_000_000) / totalSharesAfter : 0,
       simOwnerShares,
       oldShares,
       newShares
