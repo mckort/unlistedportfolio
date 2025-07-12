@@ -173,39 +173,39 @@ export function simulateTenYears(params) {
  */
 export function calculateResults(params) {
   const f = params.ownershipShare / 100; // Ägarandel som decimal
-  
+
   // 1. Initialt värde på användarens andelar
   const initialValue = f * params.initialMarketValue;
-  
+
   // 2. Utspädning vid nyemission
-  // Ny ägarandel = f * (2/3) baserat på nyemission på 5 MSEK till initialt marknadsvärde 10 MSEK
-  const newOwnershipShare = f * (2 / 3);
-  
+  let newOwnershipShare = f;
+  if (params.newIssueAmount > 0) {
+    // Beräkna utspädning baserat på nyemission
+    const preMoneyValue = params.initialMarketValue;
+    const postMoneyValue = preMoneyValue + params.newIssueAmount;
+    const dilutionFactor = preMoneyValue / postMoneyValue;
+    newOwnershipShare = f * dilutionFactor;
+  }
+
   // 3. Substansvärde och marknadsvärde vid årets slut
-  // Initialt substansvärde
   let substanceValue = params.initialNav;
-  
-  // Efter nyemission
   substanceValue += params.newIssueAmount;
-  
-  // Efter förvaltningskostnader
   substanceValue -= params.managementCosts;
-  
-  // Efter substansökning
   substanceValue += params.substanceIncrease;
-  
-  // Slutligt marknadsvärde (baserat på substansrabatt)
   const finalMarketValue = (1 - params.substanceDiscount / 100) * substanceValue;
-  
-  // 4. Värde på användarens andelar
+
+  // 4. Värde på användarens andelar (efter utspädning och substansrabatt)
   const newValue = newOwnershipShare * finalMarketValue;
-  
-  // 5. Procentuell förändring (förbättrad precision)
+
+  // 5. Procentuell förändring
   const percentageChange = initialValue !== 0 ? ((newValue - initialValue) / initialValue) * 100 : 0;
-  
-  // 6. IRR-beräkning (förenklad)
-  const irr = calculateIRR(initialValue, params.managementCosts * f, newValue);
-  
+
+  // 6. IRR-beräkning (korrekt för 1 år: (slutvärde / initial investering) - 1)
+  let irr = null;
+  if (initialValue > 0) {
+    irr = ((newValue / initialValue) - 1) * 100;
+  }
+
   // Debug-information för att verifiera beräkningar
   console.log('Beräkningsdebug:', {
     f,
@@ -214,9 +214,10 @@ export function calculateResults(params) {
     substanceValue,
     finalMarketValue,
     newValue,
-    percentageChange
+    percentageChange,
+    dilutionFactor: params.newIssueAmount > 0 ? (params.initialMarketValue / (params.initialMarketValue + params.newIssueAmount)) : 1
   });
-  
+
   return {
     initialValue,
     newOwnershipShare: newOwnershipShare * 100, // Konvertera tillbaka till procent
@@ -236,12 +237,31 @@ export function calculateResults(params) {
  * @returns {number} - IRR i procent
  */
 function calculateIRR(initialInvestment, managementCosts, finalValue) {
-  // Förenklad IRR-beräkning
-  // IRR = (Slutvärde - Initial investering - Förvaltningskostnader) / Initial investering * 100
-  const totalReturn = finalValue - initialInvestment - managementCosts;
-  const irr = initialInvestment !== 0 ? (totalReturn / initialInvestment) * 100 : 0;
+  // Förbättrad IRR-beräkning för 1-års period
+  // Skapa kassaflöden: [initialInvestment (negativt), managementCosts (negativt), finalValue (positivt)]
+  const cashFlows = [-initialInvestment, -managementCosts, finalValue];
   
-  return irr;
+  // Newton-Raphson metod för IRR-beräkning
+  let guess = 0.1; // Starta med 10%
+  for (let iter = 0; iter < 100; iter++) {
+    let npv = 0;
+    let dnpv = 0;
+    for (let t = 0; t < cashFlows.length; t++) {
+      npv += cashFlows[t] / Math.pow(1 + guess, t);
+      if (t > 0) {
+        dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
+      }
+    }
+    const newGuess = guess - npv / dnpv;
+    if (Math.abs(newGuess - guess) < 1e-7) { 
+      return newGuess * 100; // Returnera som procent
+    }
+    guess = newGuess;
+  }
+  
+  // Fallback till enkel beräkning om Newton-Raphson inte konvergerar
+  const totalReturn = finalValue - initialInvestment - managementCosts;
+  return initialInvestment !== 0 ? (totalReturn / initialInvestment) * 100 : 0;
 }
 
 /**
@@ -372,7 +392,7 @@ export function deleteScenario(name) {
  * @param {Array} customResults - Array med custom-resultat för varje år
  * @param {Array} yearInputs - Array med custom-parametrar för varje år
  */
-export function exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs) {
+export function exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs, simulationIRR, options = {}) {
   const initialMarketValue = params.initialMarketValue ?? (antalAktier * aktiePris / 1_000_000);
 
   // Sammanfattning för investerare i första nyemissionen (år 0)
@@ -383,26 +403,37 @@ export function exportToCSV(params, results, antalAktier, aktiePris, customResul
   const last = customResults ? customResults[customResults.length-1] : null;
   const ownerAfter10 = last && last.totalShares ? (last.simOwnerShares / last.totalShares) * 100 : 0;
   const valueAfter10 = last && last.totalShares ? (last.simOwnerShares / last.totalShares) * last.marketValue : 0;
-  const cashFlows = invested && last ? [ -invested, ...Array(9).fill(0), valueAfter10 ] : [];
+  
+  // Beräkna IRR baserat på faktiska kassaflöden från simuleringen
   let irr = null;
-  if (cashFlows.length === 10 && invested > 0 && valueAfter10 > 0) {
-    // Enkel IRR-beräkning (Newton-Raphson)
-    let guess = 0.1;
-    for (let iter = 0; iter < 100; iter++) {
-      let npv = 0;
-      let dnpv = 0;
-      for (let t = 0; t < cashFlows.length; t++) {
-        npv += cashFlows[t] / Math.pow(1 + guess, t);
-        if (t > 0) {
-          dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
-        }
-      }
-      const newGuess = guess - npv / dnpv;
-      if (Math.abs(newGuess - guess) < 1e-7) { irr = newGuess; break; }
-      guess = newGuess;
+  let cashFlows = null;
+  if (customResults && customResults.length > 0 && invested > 0) {
+    cashFlows = [];
+    cashFlows.push(-invested);
+    for (let year = 1; year < 10; year++) {
+      cashFlows.push(0);
     }
-    // Visa IRR även om den är låg, så länge den är > -99%
-    if (irr < -0.99) irr = null;
+    cashFlows.push(valueAfter10);
+    if (cashFlows.length === 11 && invested > 0 && valueAfter10 > 0) {
+      let guess = 0.1;
+      for (let iter = 0; iter < 100; iter++) {
+        let npv = 0;
+        let dnpv = 0;
+        for (let t = 0; t < cashFlows.length; t++) {
+          npv += cashFlows[t] / Math.pow(1 + guess, t);
+          if (t > 0) {
+            dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
+          }
+        }
+        const newGuess = guess - npv / dnpv;
+        if (Math.abs(newGuess - guess) < 1e-7) { 
+          irr = newGuess; 
+          break; 
+        }
+        guess = newGuess;
+      }
+      if (irr < -0.99) irr = null;
+    }
   }
 
   // Sammanfattning för simulerad ägare (efter 10 år)
@@ -413,29 +444,46 @@ export function exportToCSV(params, results, antalAktier, aktiePris, customResul
   const finalSubstance = last && last.substanceValue != null ? last.substanceValue : 'n/a';
   const finalMarket = last && last.marketValue != null ? last.marketValue : 'n/a';
 
+  // Helper to format numbers with '.' as decimal and 2 decimals
+  function fmt(n) {
+    if (typeof n === 'number') return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (typeof n === 'string' && n !== 'n/a') return parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n;
+  }
+
+  // Use semicolon as separator
+  const sep = ';';
+
   const csvContent = [
-    'Sammanfattning,,',
-    'Investerare i första nyemissionen (år 0),,',
-    `Investerat belopp (MSEK),${invested.toFixed(2)},MSEK`,
-    `Ägarandel efter emission år 0,${ownershipAfter0.toFixed(2)},%`,
-    `Ägarandel efter 10 år,${ownerAfter10.toFixed(2)},%`,
-    `Värde efter 10 år (MSEK),${valueAfter10.toFixed(2)},MSEK`,
-    `IRR (10 år),${irr !== null && !isNaN(irr) ? (irr*100).toFixed(2) + '%' : 'n/a'},`,
-    `Kassaflöden för IRR,"${cashFlows.length === 10 ? cashFlows.map(x => x.toFixed(2)).join('; ') : 'n/a'}",`,
+    'Sammanfattning', '', '',
+    'Investerare i första nyemissionen (år 0)', '', '',
+    `Investerat belopp (MSEK)${sep}${fmt(invested)}${sep}MSEK`,
+    `Ägarandel efter emission år 0${sep}${fmt(ownershipAfter0)}${sep}%`,
+    `Ägarandel efter 10 år${sep}${fmt(ownerAfter10)}${sep}%`,
+    `Värde efter 10 år (MSEK)${sep}${fmt(valueAfter10)}${sep}MSEK`,
+    `IRR (10 år)${sep}${irr !== null && !isNaN(irr) ? fmt(irr*100) + '%' : 'n/a'}${sep}`,
+    `Kassaflöden för IRR${sep}"${cashFlows ? cashFlows.map(fmt).join(' ; ') : 'n/a'}"${sep}`,
     '',
-    'Simulerad ägare efter 10 år,,',
-    `Ägarandel efter 10 år,${simOwnerShare.toFixed(2)},%`,
-    `Värde efter 10 år (MSEK),${simOwnerValue.toFixed(2)},MSEK`,
+    'Simulerad ägare efter 10 år', '', '',
+    `Ägarandel efter 10 år${sep}${fmt(simOwnerShare)}${sep}%`,
+    `Värde efter 10 år (MSEK)${sep}${fmt(simOwnerValue)}${sep}MSEK`,
+    `IRR (10 år simulering)${sep}${simulationIRR !== null && !isNaN(simulationIRR) ? fmt(simulationIRR) + '%' : 'n/a'}${sep}`,
     '',
-    'Resultat,Värde,Enhet',
-    `Substans (MSEK) år 10,${finalSubstance !== 'n/a' ? Number(finalSubstance).toFixed(2) : 'n/a'},MSEK`,
-    `Marknadsvärde (MSEK) år 10,${finalMarket !== 'n/a' ? Number(finalMarket).toFixed(2) : 'n/a'},MSEK`,
-    `Nytt värde på andelar,${results.newValue ? results.newValue.toFixed(2) : 'n/a'},MSEK`,
-    `Procentuell förändring,${results.percentageChange ? results.percentageChange.toFixed(2) : 'n/a'},%`,
-    `IRR,${results.irr ? results.irr.toFixed(2) : 'n/a'},%`,
+    'Resultat;Värde;Enhet',
+    `Substans (MSEK) år 10${sep}${finalSubstance !== 'n/a' ? fmt(finalSubstance) : 'n/a'}${sep}MSEK`,
+    `Marknadsvärde (MSEK) år 10${sep}${finalMarket !== 'n/a' ? fmt(finalMarket) : 'n/a'}${sep}MSEK`,
+    `Nytt värde på andelar${sep}${results.newValue ? fmt(results.newValue) : 'n/a'}${sep}MSEK`,
+    `Procentuell förändring${sep}${results.percentageChange ? fmt(results.percentageChange) : 'n/a'}${sep}%`,
+    `IRR (1 år)${sep}${results.irr ? fmt(results.irr) + '%' : 'n/a'}${sep}`,
     '',
     'OBS: IRR kan vara negativ om värdet efter 10 år är lägre än investerat belopp.',
+    'IRR (1 år) baseras på förenklad 1-års beräkning.',
+    'IRR (10 år) baseras på detaljerad 10-års simulering.',
   ].join('\n');
+
+  if (options.returnString) {
+    return csvContent;
+  }
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
@@ -651,5 +699,49 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     });
   }
 
-  return results;
+  // Beräkna IRR för hela simuleringen
+  let simulationIRR = null;
+  if (results.length > 0) {
+    const initialInvestment = results[0].shareValue; // Initialt värde på andelar
+    const finalValue = results[results.length - 1].shareValue; // Slutvärde på andelar
+    
+    // Skapa kassaflöden för IRR-beräkning
+    const cashFlows = [];
+    
+    // År 0: Initial investering (negativt)
+    cashFlows.push(-initialInvestment);
+    
+    // År 1-10: Inga ytterligare investeringar i denna modell
+    for (let year = 1; year <= 10; year++) {
+      cashFlows.push(0);
+    }
+    
+    // År 10: Slutvärde (positivt)
+    cashFlows.push(finalValue);
+    
+    // Beräkna IRR med Newton-Raphson metod
+    if (cashFlows.length === 12 && initialInvestment > 0 && finalValue > 0) {
+      let guess = 0.1; // Starta med 10%
+      for (let iter = 0; iter < 100; iter++) {
+        let npv = 0;
+        let dnpv = 0;
+        for (let t = 0; t < cashFlows.length; t++) {
+          npv += cashFlows[t] / Math.pow(1 + guess, t);
+          if (t > 0) {
+            dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
+          }
+        }
+        const newGuess = guess - npv / dnpv;
+        if (Math.abs(newGuess - guess) < 1e-7) { 
+          simulationIRR = newGuess * 100; // Som procent
+          break; 
+        }
+        guess = newGuess;
+      }
+      // Visa IRR även om den är låg, så länge den är > -99%
+      if (simulationIRR < -99) simulationIRR = null;
+    }
+  }
+
+  return { results, simulationIRR };
 } 

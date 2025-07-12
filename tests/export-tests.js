@@ -1,0 +1,318 @@
+/**
+ * Test suite för CSV-export funktionalitet
+ * Verifierar att exportToCSV fungerar korrekt med olika scenarier
+ */
+
+// Mock DOM environment för Node.js
+global.document = {
+  createElement: (tag) => ({
+    setAttribute: () => {},
+    style: {},
+    click: () => {},
+  }),
+  body: {
+    appendChild: () => {},
+    removeChild: () => {},
+  },
+};
+
+global.URL = {
+  createObjectURL: () => 'mock-url',
+};
+
+// Import test utilities
+import { 
+  validateInputs, 
+  calculateResults, 
+  simulateCustomYears, 
+  exportToCSV 
+} from '../src/utils/calculations.js';
+
+// Test scenarios
+const testScenarios = [
+  {
+    name: "Basic Scenario - No New Issues",
+    params: {
+      initialMarketValue: 10,
+      initialNav: 15,
+      substanceDiscount: 33.33,
+      ownershipShare: 25,
+      newIssueAmount: 0,
+      managementCosts: 1,
+      substanceIncrease: 2,
+      substanceIncreasePercent: 13.33
+    },
+    antalAktier: 1000000,
+    aktiePris: 10,
+    yearInputs: [
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+      { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 }
+    ]
+  },
+  {
+    name: "Scenario with New Issues",
+    params: {
+      initialMarketValue: 20,
+      initialNav: 25,
+      substanceDiscount: 20,
+      ownershipShare: 30,
+      newIssueAmount: 5,
+      managementCosts: 2,
+      substanceIncrease: 3,
+      substanceIncreasePercent: 12
+    },
+    antalAktier: 2000000,
+    aktiePris: 10,
+    yearInputs: [
+      { newIssue: 5, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 5, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 0, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 5, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 0, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 5, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 0, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 5, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 0, growth: 12, managementCosts: 2, substanceDiscount: 20 },
+      { newIssue: 5, growth: 12, managementCosts: 2, substanceDiscount: 20 }
+    ]
+  },
+  {
+    name: "High Growth Scenario",
+    params: {
+      initialMarketValue: 50,
+      initialNav: 60,
+      substanceDiscount: 16.67,
+      ownershipShare: 40,
+      newIssueAmount: 10,
+      managementCosts: 5,
+      substanceIncrease: 8,
+      substanceIncreasePercent: 13.33
+    },
+    antalAktier: 5000000,
+    aktiePris: 10,
+    yearInputs: [
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 },
+      { newIssue: 10, growth: 13.33, managementCosts: 5, substanceDiscount: 16.67 }
+    ]
+  }
+];
+
+// Test runner
+async function runExportTests() {
+  console.log('\n🧪 Running CSV Export Tests...\n');
+  
+  let passedTests = 0;
+  let totalTests = 0;
+  
+  for (const [index, scenario] of testScenarios.entries()) {
+    console.log(`\n📊 Test ${index + 1}: ${scenario.name}`);
+    console.log('─'.repeat(50));
+    try {
+      // Validate inputs
+      const validation = validateInputs(scenario.params);
+      if (!validation.isValid) {
+        throw new Error(`Invalid inputs: ${validation.errors.join(', ')}`);
+      }
+      // Calculate 1-year results
+      const results = calculateResults(scenario.params);
+      if (!results) {
+        throw new Error('Failed to calculate 1-year results');
+      }
+      // Simulate custom years
+      const { results: customResults, simulationIRR } = simulateCustomYears(
+        scenario.params, 
+        scenario.yearInputs, 
+        scenario.antalAktier, 
+        scenario.aktiePris
+      );
+      if (!customResults || customResults.length === 0) {
+        throw new Error('Failed to generate custom results');
+      }
+      // Test export function (download)
+      let exportSuccess = false;
+      try {
+        exportToCSV(
+          scenario.params,
+          results,
+          scenario.antalAktier,
+          scenario.aktiePris,
+          customResults,
+          scenario.yearInputs,
+          simulationIRR
+        );
+        exportSuccess = true;
+      } catch (exportError) {
+        throw new Error(`Export failed: ${exportError.message}`);
+      }
+      if (!exportSuccess) {
+        throw new Error('Export function did not complete successfully');
+      }
+      // Test CSV string output
+      const csvString = exportToCSV(
+        scenario.params,
+        results,
+        scenario.antalAktier,
+        scenario.aktiePris,
+        customResults,
+        scenario.yearInputs,
+        simulationIRR,
+        { returnString: true }
+      );
+      // Check separator and decimal
+      if (!csvString.includes(';')) throw new Error('CSV does not use semicolon as separator');
+      if (csvString.match(/\d,\d{2}/)) throw new Error('CSV uses comma as decimal separator');
+      // Check cash flow row is quoted and separated
+      const cashFlowRow = csvString.split('\n').find(row => row.startsWith('Kassaflöden för IRR'));
+      if (!cashFlowRow.includes('"')) throw new Error('Cash flow row is not quoted');
+      if (!cashFlowRow.includes(' ; ') && !cashFlowRow.includes('"n/a"')) {
+        console.log('DEBUG: Cash flow row:', cashFlowRow);
+        console.log('DEBUG: Full CSV string:\n', csvString);
+        throw new Error('Cash flow values are not separated by semicolon');
+      }
+      // Check that key values are reasonable
+      const lastResult = customResults[customResults.length - 1];
+      if (!lastResult) throw new Error('No final result found in custom results');
+      if (lastResult.substanceValue <= 0) throw new Error('Final substance value should be positive');
+      if (lastResult.marketValue <= 0) throw new Error('Final market value should be positive');
+      if (lastResult.ownershipShare < 0 || lastResult.ownershipShare > 100) throw new Error('Final ownership share should be between 0-100%');
+      if (simulationIRR !== null && (isNaN(simulationIRR) || simulationIRR < -99)) throw new Error(`Invalid simulation IRR: ${simulationIRR}`);
+      console.log(`✅ ${scenario.name} - PASSED`);
+      passedTests++;
+    } catch (error) {
+      console.log(`❌ ${scenario.name} - FAILED`);
+      console.log(`   Error: ${error.message}`);
+    }
+    totalTests++;
+  }
+  // Summary
+  console.log('\n' + '='.repeat(60));
+  console.log(`📈 Export Test Summary:`);
+  console.log(`   Passed: ${passedTests}/${totalTests}`);
+  console.log(`   Success Rate: ${((passedTests / totalTests) * 100).toFixed(1)}%`);
+  if (passedTests === totalTests) {
+    console.log('🎉 All export tests passed!');
+  } else {
+    console.log('⚠️  Some export tests failed. Check the errors above.');
+  }
+  return passedTests === totalTests;
+}
+
+// Manual test function for debugging
+function testExportManually() {
+  console.log('\n🔧 Manual Export Test...\n');
+  
+  const testParams = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 33.33,
+    ownershipShare: 25,
+    newIssueAmount: 5,
+    managementCosts: 1,
+    substanceIncrease: 2,
+    substanceIncreasePercent: 13.33
+  };
+  
+  const testYearInputs = [
+    { newIssue: 5, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 5, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 5, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 5, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 5, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    { newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 }
+  ];
+  
+  try {
+    console.log('1. Validating inputs...');
+    const validation = validateInputs(testParams);
+    console.log(`   Validation: ${validation.isValid ? '✅ PASS' : '❌ FAIL'}`);
+    if (!validation.isValid) {
+      console.log(`   Errors: ${validation.errors.join(', ')}`);
+      return false;
+    }
+    
+    console.log('2. Calculating 1-year results...');
+    const results = calculateResults(testParams);
+    console.log(`   Results: ${results ? '✅ Generated' : '❌ Failed'}`);
+    if (results) {
+      console.log(`   New Value: ${results.newValue?.toFixed(2) || 'N/A'} MSEK`);
+      console.log(`   Percentage Change: ${results.percentageChange?.toFixed(2) || 'N/A'}%`);
+      console.log(`   IRR: ${results.irr?.toFixed(2) || 'N/A'}%`);
+    }
+    
+    console.log('3. Simulating custom years...');
+    const { results: customResults, simulationIRR } = simulateCustomYears(
+      testParams, 
+      testYearInputs, 
+      1000000, 
+      10
+    );
+    console.log(`   Custom Results: ${customResults ? customResults.length : 0} entries`);
+    console.log(`   Simulation IRR: ${simulationIRR !== null ? simulationIRR.toFixed(2) + '%' : 'N/A'}`);
+    
+    if (customResults && customResults.length > 0) {
+      const lastResult = customResults[customResults.length - 1];
+      console.log(`   Final Substance: ${lastResult.substanceValue?.toFixed(2) || 'N/A'} MSEK`);
+      console.log(`   Final Market: ${lastResult.marketValue?.toFixed(2) || 'N/A'} MSEK`);
+      console.log(`   Final Ownership: ${lastResult.ownershipShare?.toFixed(2) || 'N/A'}%`);
+    }
+    
+    console.log('4. Testing export function...');
+    try {
+      exportToCSV(
+        testParams,
+        results,
+        1000000,
+        10,
+        customResults,
+        testYearInputs,
+        simulationIRR
+      );
+      console.log('   Export: ✅ Success');
+      return true;
+    } catch (exportError) {
+      console.log(`   Export: ❌ Failed - ${exportError.message}`);
+      return false;
+    }
+    
+  } catch (error) {
+    console.log(`❌ Manual test failed: ${error.message}`);
+    return false;
+  }
+}
+
+// Run tests if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const args = process.argv.slice(2);
+  
+  if (args.includes('--manual')) {
+    testExportManually();
+  } else {
+    runExportTests();
+  }
+}
+
+export {
+  runExportTests,
+  testExportManually,
+  testScenarios
+}; 

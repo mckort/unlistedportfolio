@@ -82,6 +82,7 @@ function App() {
   const [results, setResults] = useState(null);
   const [breakEven, setBreakEven] = useState(null);
   const [customResults, setCustomResults] = useState(null);
+  const [simulationIRR, setSimulationIRR] = useState(null);
   const [errors, setErrors] = useState([]);
   const [chartData, setChartData] = useState(null);
   const [savedScenarios, setSavedScenarios] = useState({});
@@ -106,7 +107,7 @@ function App() {
     setSavedScenarios(scenarios);
   }, []);
 
-  // Beräkna resultat när parametrar ändras (realtidsuppdatering)
+  // Beräkna resultat när parametrar ändras
   useEffect(() => {
     const validation = validateInputs(params);
     setErrors(validation.errors);
@@ -114,15 +115,17 @@ function App() {
     if (validation.isValid) {
       const calculatedResults = calculateResults(params);
       const calculatedBreakEven = calculateBreakEven(params);
-      const customSim = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+      const customSimResult = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
       setResults(calculatedResults);
       setBreakEven(calculatedBreakEven);
-      setCustomResults(customSim);
+      setCustomResults(customSimResult.results);
+      setSimulationIRR(customSimResult.simulationIRR);
       // chartData kan byggas om på liknande sätt om du vill
     } else {
       setResults(null);
       setBreakEven(null);
       setCustomResults(null);
+      setSimulationIRR(null);
     }
   }, [params, yearInputs, antalAktier, aktiePris]);
 
@@ -237,7 +240,7 @@ function App() {
   // Exportera till CSV
   const handleExport = () => {
     if (results && customResults && yearInputs) {
-      exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs);
+      exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs, simulationIRR);
     }
   };
 
@@ -610,7 +613,7 @@ function App() {
           <div className="readonly-field">
             {params.initialMarketValue.toLocaleString('sv-SE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-        </div>
+            </div>
 
         <div className="form-group">
           <label htmlFor="valueInHolding">Värde innehav simulerad ägare (MSEK)</label>
@@ -620,27 +623,27 @@ function App() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="antalAktier">Antal aktier</label>
-          <input
-            id="antalAktier"
-            type="number"
-            value={antalAktier}
+            <label htmlFor="antalAktier">Antal aktier</label>
+            <input
+              id="antalAktier"
+              type="number"
+              value={antalAktier}
             onChange={(e) => setAntalAktier(e.target.value)}
-            step="1"
-            min="0"
-          />
-        </div>
+              step="1"
+              min="0"
+            />
+          </div>
 
         <div className="form-group">
-          <label htmlFor="aktiePris">Pris per aktie (SEK)</label>
-          <input
-            id="aktiePris"
-            type="number"
-            value={aktiePris}
+            <label htmlFor="aktiePris">Pris per aktie (SEK)</label>
+            <input
+              id="aktiePris"
+              type="number"
+              value={aktiePris}
             onChange={(e) => setAktiePris(e.target.value)}
-            step="0.01"
-            min="0"
-          />
+              step="0.01"
+              min="0"
+            />
         </div>
 
         <div className="form-group">
@@ -850,126 +853,126 @@ function App() {
           </p>
           <div style={{ overflowX: 'auto' }}>
             <div className="table-scroll">
-              <table style={{ 
-                width: '100%', 
-                borderCollapse: 'collapse', 
-                marginBottom: '1rem',
-                fontSize: '0.85rem',
-                minWidth: '1200px'
-              }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8f9fa' }}>
-                    <th style={{ padding: '8px 4px', minWidth: '30px' }}>År</th>
-                    <th style={{ padding: '8px 4px', minWidth: '80px' }}>Substans (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '80px' }}>Marknadsvärde (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '70px' }}>Ägarandel simulerad ägare (%)</th>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse', 
+              marginBottom: '1rem',
+              fontSize: '0.85rem',
+              minWidth: '1200px'
+            }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8f9fa' }}>
+                  <th style={{ padding: '8px 4px', minWidth: '30px' }}>År</th>
+                  <th style={{ padding: '8px 4px', minWidth: '80px' }}>Substans (MSEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '80px' }}>Marknadsvärde (MSEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '70px' }}>Ägarandel simulerad ägare (%)</th>
                     <th style={{ padding: '8px 4px', minWidth: '80px' }}>Andelsvärde simulerad ägare (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '60px' }}>Kassa (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '90px' }}>Antal aktier simulerad ägare</th>
-                    <th style={{ padding: '8px 4px', minWidth: '90px' }}>Totala antalet aktier</th>
-                    <th style={{ padding: '8px 4px', minWidth: '70px' }}>Nyemission (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '60px' }}>Substansrabatt (%)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '60px' }}>Utspädning (%)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '60px' }}>Exit (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '70px' }}>Investering (MSEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '60px' }}>Tillväxt (%)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '70px' }}>Förändring från start (%)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '90px' }}>Pris per aktie (SEK)</th>
-                    <th style={{ padding: '8px 4px', minWidth: '90px', background: '#ffe' }}>Gamla aktier</th>
-                    <th style={{ padding: '8px 4px', minWidth: '90px', background: '#ffe' }}>Nya aktier</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customResults.map((result, index) => (
-                    <tr key={index} style={{ backgroundColor: index % 2 === 0 ? 'white' : '#f8f9fa' }}>
-                      <td style={{ fontWeight: 'bold', textAlign: 'center', padding: '6px 4px' }}>{result.year}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.substanceValue.toFixed(1)}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.marketValue.toFixed(1)}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.ownershipShare.toFixed(2)}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.shareValue.toFixed(2)}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.cash.toFixed(1)}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.simOwnerShares?.toLocaleString('sv-SE', { maximumFractionDigits: 0 })}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.totalShares?.toLocaleString('sv-SE', { maximumFractionDigits: 0 })}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                        {result.step === 'efter investering' ? (
-                          <input
-                            type="number"
-                            value={yearInputs[Math.floor(index/2)]?.newIssue ?? ''}
-                            min="0"
-                            step="0.1"
-                            style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                            onChange={e => handleYearInputChange(Math.floor(index/2), 'newIssue', e.target.value)}
-                            disabled={index === 0 ? false : false}
-                          />
-                        ) : ''}
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                  <th style={{ padding: '8px 4px', minWidth: '60px' }}>Kassa (MSEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '90px' }}>Antal aktier simulerad ägare</th>
+                  <th style={{ padding: '8px 4px', minWidth: '90px' }}>Totala antalet aktier</th>
+                  <th style={{ padding: '8px 4px', minWidth: '70px' }}>Nyemission (MSEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '60px' }}>Substansrabatt (%)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '60px' }}>Utspädning (%)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '60px' }}>Exit (MSEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '70px' }}>Investering (MSEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '60px' }}>Tillväxt (%)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '70px' }}>Förändring från start (%)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '90px' }}>Pris per aktie (SEK)</th>
+                  <th style={{ padding: '8px 4px', minWidth: '90px', background: '#ffe' }}>Gamla aktier</th>
+                  <th style={{ padding: '8px 4px', minWidth: '90px', background: '#ffe' }}>Nya aktier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customResults.map((result, index) => (
+                  <tr key={index} style={{ backgroundColor: index % 2 === 0 ? 'white' : '#f8f9fa' }}>
+                    <td style={{ fontWeight: 'bold', textAlign: 'center', padding: '6px 4px' }}>{result.year}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.substanceValue.toFixed(1)}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.marketValue.toFixed(1)}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.ownershipShare.toFixed(2)}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.shareValue.toFixed(2)}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.cash.toFixed(1)}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.simOwnerShares?.toLocaleString('sv-SE', { maximumFractionDigits: 0 })}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.totalShares?.toLocaleString('sv-SE', { maximumFractionDigits: 0 })}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                      {result.step === 'efter investering' ? (
+                        <input
+                          type="number"
+                          value={yearInputs[Math.floor(index/2)]?.newIssue ?? ''}
+                          min="0"
+                          step="0.1"
+                          style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                          onChange={e => handleYearInputChange(Math.floor(index/2), 'newIssue', e.target.value)}
+                          disabled={index === 0 ? false : false}
+                        />
+                      ) : ''}
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
                         {result.year === 0
                           ? result.substanceDiscount.toFixed(1)
                           : (
-                            <input
-                              type="number"
-                              value={yearInputs[Math.floor(index/2)]?.substanceDiscount ?? ''}
-                              min="0"
-                              max="100"
-                              step="0.1"
-                              style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                              onChange={e => handleYearInputChange(Math.floor(index/2), 'substanceDiscount', e.target.value)}
-                            />
+                      <input
+                        type="number"
+                        value={yearInputs[Math.floor(index/2)]?.substanceDiscount ?? ''}
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                        onChange={e => handleYearInputChange(Math.floor(index/2), 'substanceDiscount', e.target.value)}
+                      />
                           )
                         }
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.step === 'efter investering' ? (result.dilution ? result.dilution.toFixed(1) : '-') : ''}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                        {result.step === 'efter investering' ? (
-                          <input
-                            type="number"
-                            value={yearInputs[Math.floor(index/2)]?.exit ?? ''}
-                            min="0"
-                            step="0.1"
-                            style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                            onChange={e => handleYearInputChange(Math.floor(index/2), 'exit', e.target.value)}
-                          />
-                        ) : ''}
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                        {result.step === 'efter investering' ? (
-                          <input
-                            type="number"
-                            value={yearInputs[Math.floor(index/2)]?.investment ?? ''}
-                            min="0"
-                            step="0.1"
-                            style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                            onChange={e => handleYearInputChange(Math.floor(index/2), 'investment', e.target.value)}
-                          />
-                        ) : ''}
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.step === 'efter investering' ? (result.dilution ? result.dilution.toFixed(1) : '-') : ''}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                      {result.step === 'efter investering' ? (
                         <input
                           type="number"
-                          value={yearInputs[Math.floor(index/2)]?.growth ?? ''}
-                          min="-100"
-                          max="1000"
+                          value={yearInputs[Math.floor(index/2)]?.exit ?? ''}
+                          min="0"
                           step="0.1"
                           style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                          onChange={e => handleYearInputChange(Math.floor(index/2), 'growth', e.target.value)}
+                          onChange={e => handleYearInputChange(Math.floor(index/2), 'exit', e.target.value)}
                         />
-                      </td>
-                      <td style={{ 
-                        textAlign: 'center', 
-                        padding: '6px 4px',
-                        color: result.percentageChange > 0 ? '#27ae60' : result.percentageChange < 0 ? '#e74c3c' : '#666', 
-                        fontWeight: 'bold' 
-                      }}>
-                        {result.percentageChange ? `${result.percentageChange.toFixed(1)}%` : '-'}
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.sharePrice ? result.sharePrice.toLocaleString('sv-SE', { maximumFractionDigits: 2 }) : '-'}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px', background: '#ffe' }}>{result.oldShares !== undefined ? result.oldShares.toLocaleString('sv-SE', { maximumFractionDigits: 0 }) : '-'}</td>
-                      <td style={{ textAlign: 'center', padding: '6px 4px', background: '#ffe' }}>{result.newShares !== undefined ? result.newShares.toLocaleString('sv-SE', { maximumFractionDigits: 0 }) : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      ) : ''}
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                      {result.step === 'efter investering' ? (
+                        <input
+                          type="number"
+                          value={yearInputs[Math.floor(index/2)]?.investment ?? ''}
+                          min="0"
+                          step="0.1"
+                          style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                          onChange={e => handleYearInputChange(Math.floor(index/2), 'investment', e.target.value)}
+                        />
+                      ) : ''}
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                      <input
+                        type="number"
+                        value={yearInputs[Math.floor(index/2)]?.growth ?? ''}
+                        min="-100"
+                        max="1000"
+                        step="0.1"
+                        style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                        onChange={e => handleYearInputChange(Math.floor(index/2), 'growth', e.target.value)}
+                      />
+                    </td>
+                    <td style={{ 
+                      textAlign: 'center', 
+                      padding: '6px 4px',
+                      color: result.percentageChange > 0 ? '#27ae60' : result.percentageChange < 0 ? '#e74c3c' : '#666', 
+                      fontWeight: 'bold' 
+                    }}>
+                      {result.percentageChange ? `${result.percentageChange.toFixed(1)}%` : '-'}
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.sharePrice ? result.sharePrice.toLocaleString('sv-SE', { maximumFractionDigits: 2 }) : '-'}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px', background: '#ffe' }}>{result.oldShares !== undefined ? result.oldShares.toLocaleString('sv-SE', { maximumFractionDigits: 0 }) : '-'}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px', background: '#ffe' }}>{result.newShares !== undefined ? result.newShares.toLocaleString('sv-SE', { maximumFractionDigits: 0 }) : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             </div>
           </div>
         </div>
@@ -1016,17 +1019,44 @@ function App() {
               <div className="result-label">Värde efter 10 år (MSEK)</div>
             </div>
             <div className="result-item">
-              <div className="result-value">{(() => {
-                const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
-                const last = customResults[customResults.length-1];
-                if (!invested || !last) return 'n/a';
-                const finalValue = (last.simOwnerShares / last.totalShares) * last.marketValue;
-                const cashFlows = [ -invested, ...Array(9).fill(0), finalValue ];
-                const irr = calculateIRRFromCashFlows(cashFlows);
-                if (isNaN(irr)) return 'n/a';
-                return (irr * 100).toFixed(2) + '%';
-              })()}</div>
+              <div className="result-value">{simulationIRR !== null && !isNaN(simulationIRR) ? simulationIRR.toFixed(2) + '%' : 'n/a'}</div>
               <div className="result-label">IRR (10 år)</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sammanfattning: Simulerad ägare */}
+      {customResults && customResults.length > 10 && (
+        <div className="results">
+          <h2>Sammanfattning: Simulerad ägare</h2>
+          <div className="results-grid">
+            <div className="result-item">
+              <div className="result-value">{(() => {
+                const last = customResults[customResults.length-1];
+                if (!last) return 'n/a';
+                return last.ownershipShare.toFixed(2) + '%';
+              })()}</div>
+              <div className="result-label">Ägarandel efter 10 år</div>
+            </div>
+            <div className="result-item">
+              <div className="result-value">{(() => {
+                const last = customResults[customResults.length-1];
+                if (!last) return 'n/a';
+                return last.shareValue.toFixed(2);
+              })()}</div>
+              <div className="result-label">Värde efter 10 år (MSEK)</div>
+            </div>
+            <div className="result-item">
+              <div className="result-value">{(() => {
+                const last = customResults[customResults.length-1];
+                if (!last) return 'n/a';
+                const initialValue = customResults[0].shareValue;
+                const finalValue = last.shareValue;
+                const percentageChange = ((finalValue - initialValue) / initialValue) * 100;
+                return percentageChange.toFixed(2) + '%';
+              })()}</div>
+              <div className="result-label">Procentuell förändring (10 år)</div>
             </div>
           </div>
         </div>

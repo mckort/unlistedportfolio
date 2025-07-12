@@ -83,18 +83,45 @@ Antal nya aktier = Nyemissionsbelopp × 1,000,000 / Pris per aktie före emissio
 
 ### IRR (Internal Rate of Return)
 
-#### Förenklad IRR-beräkning
-```
-IRR = (Slutvärde - Initial investering - Förvaltningskostnader) / Initial investering × 100
+Applikationen beräknar IRR på flera sätt för olika perspektiv:
+
+#### 1. IRR för investerare i första nyemissionen (år 0)
+- **Kassaflöden**: Initial investering (år 0), 9 år utan kassaflöden, slutvärde (år 10)
+- **Metod**: Newton-Raphson iteration för att lösa NPV = 0
+- **Visas**: I sammanfattningssektionen och CSV-export
+
+#### 2. IRR för simulerad ägare (10 år)
+- **Kassaflöden**: Initialt andelsvärde (år 0), 10 år utan kassaflöden, slutvärde (år 10)
+- **Metod**: Newton-Raphson iteration för att lösa NPV = 0
+- **Visas**: I CSV-export som "IRR (10 år simulering)"
+
+#### 3. IRR för förenklad 1-års beräkning
+- **Kassaflöden**: Initial investering, förvaltningskostnader, slutvärde (alla år 0)
+- **Metod**: Newton-Raphson iteration för att lösa NPV = 0
+- **Visas**: I CSV-export som "IRR (1 år)"
+
+#### IRR-beräkning med Newton-Raphson metod
+```javascript
+// Starta med gissning på 10%
+let guess = 0.1;
+for (let iter = 0; iter < 100; iter++) {
+  let npv = 0;
+  let dnpv = 0;
+  for (let t = 0; t < cashFlows.length; t++) {
+    npv += cashFlows[t] / Math.pow(1 + guess, t);
+    if (t > 0) {
+      dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
+    }
+  }
+  const newGuess = guess - npv / dnpv;
+  if (Math.abs(newGuess - guess) < 1e-7) { 
+    return newGuess * 100; // Returnera som procent
+  }
+  guess = newGuess;
+}
 ```
 
-#### Avancerad IRR-beräkning (Newton-Raphson)
-För mer komplexa kassaflöden används Newton-Raphson-metoden:
-```
-NPV = Σ(CFt / (1 + r)^t) = 0
-dNPV/dr = Σ(-t × CFt / (1 + r)^(t+1))
-r_new = r_old - NPV / dNPV/dr
-```
+**Notera**: IRR kan vara negativ om slutvärdet är lägre än den initiala investeringen.
 
 ### Procentuell Förändring
 ```
@@ -148,109 +175,53 @@ För varje tillväxtnivå (0% till 200% av break-even ökning):
 Notera: Break-even beräknas internt för diagramdata men visas inte i UI eller export.
 ```
 
-### Export-funktioner
+### CSV Export
 
-#### CSV-export innehåller:
-- **Sammanfattning för investerare**: Investerat belopp, ägarandel efter emission, ägarandel efter 10 år, värde efter 10 år, IRR
+Exporterar detaljerad sammanfattning till CSV-fil med följande sektioner:
+
+#### Sammanfattning för investerare i första nyemissionen (år 0)
+- **Investerat belopp (MSEK)**: Belopp som investeras år 0
+- **Ägarandel efter emission år 0**: Procentuell ägarandel direkt efter första emissionen
+- **Ägarandel efter 10 år**: Procentuell ägarandel efter 10 års utspädning
+- **Värde efter 10 år (MSEK)**: Slutvärde på investeringen
+- **IRR (10 år)**: Internal Rate of Return baserat på faktiska kassaflöden
 - **Kassaflöden för IRR**: Array med alla kassaflöden för IRR-beräkning
-- **Slutvärden**: Substansvärde, marknadsvärde, andelsvärde, procentuell förändring
+
+#### Simulerad ägare efter 10 år
+- **Ägarandel efter 10 år**: Procentuell ägarandel för simulerad ägare
+- **Värde efter 10 år (MSEK)**: Slutvärde på simulerad ägares andelar
+- **IRR (10 år simulering)**: IRR för simulerad ägares investering
+
+#### Resultat
+- **Substans (MSEK) år 10**: Slutligt substansvärde
+- **Marknadsvärde (MSEK) år 10**: Slutligt marknadsvärde
+- **Nytt värde på andelar**: Värde på andelar efter 1 år (förenklad beräkning)
+- **Procentuell förändring**: Förändring i andelsvärde efter 1 år
+- **IRR (1 år)**: IRR baserat på förenklad 1-års beräkning
+
+**Förbättringar i IRR-beräkning**:
+- Newton-Raphson metod för korrekt IRR-beräkning
+- Separata IRR-värden för olika perspektiv
+- Kassaflöden inkluderas för felsökning
+- Hantering av negativa IRR-värden
 
 ### Pris per aktie (SEK)
 ```
-Första raden: Pris per aktie = inmatat värde (SEK)
-Övriga rader: Pris per aktie = Marknadsvärde (MSEK) * 1 000 000 / Totala antalet aktier
 ```
 
-## Installation & Körning
+## CSV Export Format
 
-### Förutsättningar
-- Node.js (v16+)
-- npm
+- The exported CSV uses a semicolon (`;`) as the column separator for best compatibility with Swedish/European spreadsheet software.
+- All numbers use a period (`.`) as the decimal separator.
+- The “Kassaflöden för IRR” row is quoted and uses ` ; ` as the separator between values, or `"n/a"` if not applicable.
+- The export is compatible with Excel, Numbers, and Google Sheets (import as semicolon-separated).
 
-### Lokal utveckling
+## Testing the Export
+
+To verify the correctness of the CSV export, run:
+
 ```bash
-git clone <repository-url>
-cd unlistedportfolio
-npm install
-npm run dev
-```
-Öppna [http://localhost:5173](http://localhost:5173)
-
-### Bygg för produktion
-```bash
-npm run build
-npm run preview
+node tests/export-tests.js
 ```
 
-## Deployment
-
-### Docker (Lokal testning)
-```bash
-# Bygg Docker-image
-docker buildx build --platform=linux/amd64 -t unlistedportfolio .
-
-# Kör lokalt för testning
-docker run -p 8080:8080 unlistedportfolio
-```
-Öppna [http://localhost:8080](http://localhost:8080) för att testa
-
-### Google Cloud Run Deployment
-
-#### Förutsättningar
-- Google Cloud CLI installerat och konfigurerat
-- Docker installerat
-- Behörighet att deploya till Google Cloud Run
-
-#### Snabb deployment med deploy-script
-```bash
-# 1. Konfigurera miljövariabler
-cp env.example .env
-# Redigera .env med dina Google Cloud-inställningar
-
-# 2. Kör deployment-scriptet
-./deploy.sh
-```
-
-#### Manuell deployment
-```bash
-# 1. Sätt ditt Google Cloud-projekt
-gcloud config set project [DITT-PROJEKT-ID]
-
-# 2. Bygg och pusha Docker-image
-docker buildx build --platform=linux/amd64 -t gcr.io/[PROJEKT-ID]/unlistedportfolio .
-docker push gcr.io/[PROJEKT-ID]/unlistedportfolio
-
-# 3. Deploy till Cloud Run
-gcloud run deploy unlistedportfolio \
-  --image gcr.io/[PROJEKT-ID]/unlistedportfolio \
-  --platform managed \
-  --region europe-north1 \
-  --allow-unauthenticated \
-  --port 8080
-```
-
-#### Felsökning av Cloud Run-deployment
-- **Plattformsfel**: Se till att bygga med `--platform=linux/amd64` på Apple Silicon
-- **Port-fel**: Appen måste lyssna på port 8080 (hanteras av Dockerfile)
-- **Behörighetsfel**: Kontrollera att du har `run.services.get` och `run.services.create` behörigheter
-
-## Teknisk översikt
-
-- **React 18** – UI och logik
-- **Vite** – Byggverktyg
-- **Chart.js** – Diagram
-- **CSS3** – Styling
-- **Docker** – Containerisering
-- **Google Cloud Run** – Serverless hosting
-
-## Exempel på användning
-- Ändra nyemission, tillväxt, exit eller investering för valfritt år
-- Se direkt hur utspädning, andelsvärde och IRR påverkas
-- Spara/ladda olika scenarier
-- Exportera resultat till CSV för vidare analys
-
-## Licens
-MIT
-
-## Support
-Skapa en issue i projektets repo eller kontakta utvecklingsteamet. 
+This will run a suite of tests to ensure the export format and values are correct.
