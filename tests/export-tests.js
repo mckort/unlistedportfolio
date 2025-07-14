@@ -256,6 +256,85 @@ async function testSimOwnerSharesAndValue() {
   console.log('Andelsvärde simulerad ägare per år:', customResults1.map(r => r.shareValue.toFixed(2)));
 }
 
+// Test: Ägarandel ska vara konstant om inga nyemissioner sker efter år 0
+async function testOwnershipConstantNoNewIssues() {
+  console.log('\n🧪 Testar att ägarandelen är konstant utan nyemissioner efter år 0...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 33.33,
+    ownershipShare: 25,
+    newIssueAmount: 10, // Endast år 0
+    managementCosts: 1,
+    substanceIncrease: 2,
+    substanceIncreasePercent: 13.33
+  };
+  const antalAktier = 1000000;
+  const aktiePris = 10;
+  // Endast år 0 har nyemission, resten 0
+  const yearInputs = [
+    { newIssue: 10, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 },
+    ...Array.from({ length: 10 }, () => ({ newIssue: 0, growth: 13.33, managementCosts: 1, substanceDiscount: 33.33 }))
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  const initialOwnership = (customResults[1].simOwnerShares / customResults[1].totalShares) * 100; // Efter emission år 0
+  const last = customResults[customResults.length-1];
+  const finalOwnership = (last.simOwnerShares / last.totalShares) * 100;
+  if (Math.abs(initialOwnership - finalOwnership) < 0.0001) {
+    console.log(`✅ Ägarandelen är konstant: ${initialOwnership.toFixed(2)}%`);
+  } else {
+    console.log(`❌ Ägarandelen ändras! Start: ${initialOwnership.toFixed(2)}%, Slut: ${finalOwnership.toFixed(2)}%`);
+  }
+}
+
+// Test: Investerare i första nyemissionen (år 0) - ägarandel och IRR
+async function testFirstNewIssueInvestorSummary() {
+  console.log('\n🧪 Testar sammanfattning för investerare i första nyemissionen (år 0)...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 0,
+    ownershipShare: 25,
+    newIssueAmount: 10, // Endast år 0
+    managementCosts: 0,
+    substanceIncrease: 0,
+    substanceIncreasePercent: 0
+  };
+  const antalAktier = 1000000;
+  const aktiePris = 10;
+  // Endast år 0 har nyemission, resten 0
+  const yearInputs = [
+    { newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 },
+    ...Array.from({ length: 10 }, () => ({ newIssue: 0, growth: 0, managementCosts: 0, substanceDiscount: 0 }))
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  // Beräkna förväntad andel och IRR
+  const invested = 10;
+  const preMoney = customResults[0].marketValue;
+  const postMoney = preMoney + invested;
+  const oldShares = customResults[0].totalShares;
+  const pricePerShare = preMoney * 1_000_000 / oldShares;
+  const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+  const totalShares = oldShares + newShares;
+  const expectedOwnership = (newShares / totalShares) * 100;
+  const last = customResults[customResults.length-1];
+  const valueAfter10 = (newShares / totalShares) * last.marketValue;
+  // IRR: investera -invested år 0, få valueAfter10 år 10
+  const irr = invested === 0 ? null : (Math.pow(valueAfter10 / invested, 1/10) - 1) * 100;
+  // Kontrollera ägarandel
+  if (Math.abs(expectedOwnership - expectedOwnership) < 0.0001) {
+    console.log(`✅ Ägarandelen för investerare i emission år 0 är korrekt: ${expectedOwnership.toFixed(2)}%`);
+  } else {
+    console.log(`❌ Felaktig ägarandel! Beräknad: ${expectedOwnership.toFixed(2)}%`);
+  }
+  // Kontrollera IRR
+  if (irr !== null && !isNaN(irr)) {
+    console.log(`✅ IRR (10 år) för investerare i emission år 0: ${irr.toFixed(2)}%`);
+  } else {
+    console.log('❌ IRR kunde inte beräknas!');
+  }
+}
+
 // Manual test function for debugging
 function testExportManually() {
   console.log('\n🔧 Manual Export Test...\n');
@@ -352,6 +431,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else {
     runExportTests();
     testSimOwnerSharesAndValue();
+    testOwnershipConstantNoNewIssues();
+    testFirstNewIssueInvestorSummary();
   }
 }
 

@@ -989,7 +989,7 @@ function App() {
             </div>
             <div className="result-item">
               <div className="result-value">{(() => {
-                // Ägarandel efter emission år 0
+                // Ägarandel efter emission år 0 (nya investeraren)
                 const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
                 const preMoney = customResults[0].marketValue;
                 const postMoney = preMoney + invested;
@@ -1000,26 +1000,61 @@ function App() {
             </div>
             <div className="result-item">
               <div className="result-value">{(() => {
-                // Ägarandel efter 10 år
-                const last = customResults[customResults.length-1];
-                if (!last) return 'n/a';
-                const percent = (last.simOwnerShares / last.totalShares) * 100;
-                return percent.toFixed(2) + '%';
-              })()}</div>
+                // Ägarandel efter 10 år (nya investeraren, om ingen utspädning: samma som efter emission)
+                const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
+                const preMoney = customResults[0].marketValue;
+                const postMoney = preMoney + invested;
+                if (postMoney === 0) return '0.00';
+                // Antal gamla aktier
+                const oldShares = customResults[0].totalShares;
+                // Pris per aktie i emissionen
+                const pricePerShare = preMoney * 1_000_000 / oldShares;
+                // Nya aktier investeraren får
+                const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+                // Totalt antal aktier efter emission
+                const totalShares = oldShares + newShares;
+                // Ägarandel efter 10 år (om ingen utspädning: samma som efter emission)
+                return ((newShares / totalShares) * 100).toFixed(2);
+              })()}%</div>
               <div className="result-label">Ägarandel efter 10 år</div>
             </div>
             <div className="result-item">
               <div className="result-value">{(() => {
-                // Värde efter 10 år = (antal aktier simulerad ägare år 10) / (totala antalet aktier år 10) * marknadsvärde år 10
+                // Värde efter 10 år = (nya aktier / totala aktier) * marknadsvärde år 10
+                const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
+                const preMoney = customResults[0].marketValue;
+                const postMoney = preMoney + invested;
+                if (postMoney === 0) return '0.00';
+                const oldShares = customResults[0].totalShares;
+                const pricePerShare = preMoney * 1_000_000 / oldShares;
+                const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+                const totalShares = oldShares + newShares;
                 const last = customResults[customResults.length-1];
                 if (!last) return 'n/a';
-                const value = (last.simOwnerShares / last.totalShares) * last.marketValue;
+                const value = (newShares / totalShares) * last.marketValue;
                 return value.toFixed(2);
               })()}</div>
               <div className="result-label">Värde efter 10 år (MSEK)</div>
             </div>
             <div className="result-item">
-              <div className="result-value">{simulationIRR !== null && !isNaN(simulationIRR) ? simulationIRR.toFixed(2) + '%' : 'n/a'}</div>
+              <div className="result-value">{(() => {
+                // IRR (10 år) för investeraren i emissionen år 0
+                const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
+                const preMoney = customResults[0].marketValue;
+                const postMoney = preMoney + invested;
+                if (postMoney === 0) return 'n/a';
+                const oldShares = customResults[0].totalShares;
+                const pricePerShare = preMoney * 1_000_000 / oldShares;
+                const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+                const totalShares = oldShares + newShares;
+                const last = customResults[customResults.length-1];
+                if (!last) return 'n/a';
+                const value = (newShares / totalShares) * last.marketValue;
+                // IRR: investera -invested år 0, få value år 10
+                if (invested === 0) return 'n/a';
+                const irr = Math.pow(value / invested, 1/10) - 1;
+                return (irr * 100).toFixed(2) + '%';
+              })()}</div>
               <div className="result-label">IRR (10 år)</div>
             </div>
           </div>
