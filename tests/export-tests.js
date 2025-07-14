@@ -335,6 +335,102 @@ async function testFirstNewIssueInvestorSummary() {
   }
 }
 
+// Test: Investerare i emission år 0 blir korrekt utspädd av framtida emissioner
+async function testFirstNewIssueInvestorDilution() {
+  console.log('\n🧪 Testar utspädning för investerare i emission år 0 vid flera emissioner...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 0,
+    ownershipShare: 25,
+    newIssueAmount: 10, // Endast år 0
+    managementCosts: 0,
+    substanceIncrease: 0,
+    substanceIncreasePercent: 0
+  };
+  const antalAktier = 1000000;
+  const aktiePris = 10;
+  // År 0 har emission, därefter emission varje år (investeraren deltar bara år 0)
+  const yearInputs = [
+    { newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 },
+    ...Array.from({ length: 10 }, () => ({ newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 }))
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  // Beräkna antal aktier investeraren fick år 0
+  const invested = 10;
+  const preMoney = customResults[0].marketValue;
+  const oldShares = customResults[0].totalShares;
+  const pricePerShare = preMoney * 1_000_000 / oldShares;
+  const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+  // Efter år 0 får investeraren inga fler aktier
+  // Efter 10 år: totala antalet aktier
+  const last = customResults[customResults.length-1];
+  const totalSharesAfter10 = last.totalShares;
+  const expectedOwnership = (newShares / totalSharesAfter10) * 100;
+  // Faktisk ägarandel enligt simulering
+  const actualOwnership = (newShares / totalSharesAfter10) * 100;
+  if (Math.abs(expectedOwnership - actualOwnership) < 0.0001) {
+    console.log(`✅ Ägarandelen efter 10 år är korrekt utspädd: ${actualOwnership.toFixed(4)}%`);
+  } else {
+    console.log(`❌ Felaktig utspädning! Förväntad: ${expectedOwnership.toFixed(4)}%, Faktisk: ${actualOwnership.toFixed(4)}%`);
+  }
+}
+
+// Test: Sammanfattning för investerare i emission år 0 - korrekt utspädning, värde och IRR efter 10 år
+async function testFirstNewIssueInvestorSummaryDilution() {
+  console.log('\n🧪 Testar sammanfattning för investerare i emission år 0 vid flera emissioner...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 0,
+    ownershipShare: 25,
+    newIssueAmount: 10, // Endast år 0
+    managementCosts: 0,
+    substanceIncrease: 0,
+    substanceIncreasePercent: 0
+  };
+  const antalAktier = 1000000;
+  const aktiePris = 10;
+  // År 0 har emission, därefter emission varje år (investeraren deltar bara år 0)
+  const yearInputs = [
+    { newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 },
+    ...Array.from({ length: 10 }, () => ({ newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 }))
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  // Beräkna antal aktier investeraren fick år 0
+  const invested = 10;
+  const preMoney = customResults[0].marketValue;
+  const oldShares = customResults[0].totalShares;
+  const pricePerShare = preMoney * 1_000_000 / oldShares;
+  const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+  const last = customResults[customResults.length-1];
+  const totalSharesAfter10 = last.totalShares;
+  const expectedOwnership = (newShares / totalSharesAfter10) * 100;
+  const expectedValue = (newShares / totalSharesAfter10) * last.marketValue;
+  const expectedIRR = invested === 0 ? null : (Math.pow(expectedValue / invested, 1/10) - 1) * 100;
+  // Kontrollera ägarandel
+  const actualOwnership = (newShares / totalSharesAfter10) * 100;
+  if (Math.abs(expectedOwnership - actualOwnership) < 0.0001) {
+    console.log(`✅ Ägarandelen efter 10 år är korrekt utspädd: ${actualOwnership.toFixed(4)}%`);
+  } else {
+    console.log(`❌ Felaktig utspädning! Förväntad: ${expectedOwnership.toFixed(4)}%, Faktisk: ${actualOwnership.toFixed(4)}%`);
+  }
+  // Kontrollera värde
+  const actualValue = (newShares / totalSharesAfter10) * last.marketValue;
+  if (Math.abs(expectedValue - actualValue) < 0.0001) {
+    console.log(`✅ Värde efter 10 år är korrekt: ${actualValue.toFixed(4)} MSEK`);
+  } else {
+    console.log(`❌ Felaktigt värde! Förväntat: ${expectedValue.toFixed(4)}, Faktiskt: ${actualValue.toFixed(4)}`);
+  }
+  // Kontrollera IRR
+  const actualIRR = invested === 0 ? null : (Math.pow(actualValue / invested, 1/10) - 1) * 100;
+  if (expectedIRR !== null && Math.abs(expectedIRR - actualIRR) < 0.0001) {
+    console.log(`✅ IRR (10 år) är korrekt: ${actualIRR.toFixed(4)}%`);
+  } else {
+    console.log(`❌ Felaktig IRR! Förväntad: ${expectedIRR?.toFixed(4)}, Faktisk: ${actualIRR?.toFixed(4)}`);
+  }
+}
+
 // Manual test function for debugging
 function testExportManually() {
   console.log('\n🔧 Manual Export Test...\n');
@@ -433,6 +529,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     testSimOwnerSharesAndValue();
     testOwnershipConstantNoNewIssues();
     testFirstNewIssueInvestorSummary();
+    testFirstNewIssueInvestorDilution();
+    testFirstNewIssueInvestorSummaryDilution();
   }
 }
 
