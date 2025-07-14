@@ -213,6 +213,49 @@ async function runExportTests() {
   return passedTests === totalTests;
 }
 
+// Additional test: simOwnerShares and shareValue logic
+async function testSimOwnerSharesAndValue() {
+  console.log('\n🧪 Testing simOwnerShares and shareValue logic...');
+
+  // Scenario 1: Simulated owner does NOT participate in new issues
+  const params1 = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 33.33,
+    ownershipShare: 25,
+    newIssueAmount: 5,
+    managementCosts: 1,
+    substanceIncrease: 2,
+    substanceIncreasePercent: 13.33
+  };
+  const antalAktier1 = 1000000;
+  const aktiePris1 = 10;
+  // Simulated owner only gets initial shares, does not participate in new issues
+  const yearInputs1 = Array.from({ length: 11 }, (_, i) => ({
+    newIssue: 5,
+    growth: 13.33,
+    managementCosts: 1,
+    substanceDiscount: 33.33
+  }));
+  const { results: customResults1 } = simulateCustomYears(params1, yearInputs1, antalAktier1, aktiePris1);
+  const initialSimOwnerShares = customResults1[0].simOwnerShares;
+  const allSimOwnerSharesEqual = customResults1.every(r => r.simOwnerShares === initialSimOwnerShares);
+  if (!allSimOwnerSharesEqual) {
+    console.log('❌ simOwnerShares changes even though simulated owner does not participate in new issues!');
+    customResults1.forEach((r, i) => console.log(`Year ${r.year}: simOwnerShares = ${r.simOwnerShares}`));
+  } else {
+    console.log('✅ simOwnerShares remains constant when simulated owner does not participate in new issues.');
+  }
+
+  // Scenario 2: Simulated owner participates in every new issue (should increase shares)
+  // For this, we need to simulate that the owner gets a proportional part of each new issue
+  // (This is not currently supported in the code, so this test will show if the code needs to be improved)
+  // For now, just print the shares for manual inspection
+  // (If you want to support this, the simulation logic must be updated)
+  console.log('Simulated owner shares per year (no participation):', customResults1.map(r => r.simOwnerShares));
+  console.log('Andelsvärde simulerad ägare per år:', customResults1.map(r => r.shareValue.toFixed(2)));
+}
+
 // Manual test function for debugging
 function testExportManually() {
   console.log('\n🔧 Manual Export Test...\n');
@@ -308,6 +351,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     testExportManually();
   } else {
     runExportTests();
+    testSimOwnerSharesAndValue();
   }
 }
 

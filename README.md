@@ -225,3 +225,25 @@ node tests/export-tests.js
 ```
 
 This will run a suite of tests to ensure the export format and values are correct.
+
+## Beräkning av andelsvärde simulerad ägare
+
+Andelsvärdet visar vad den simulerade ägarens aktier är värda vid varje tidpunkt, givet utspädning och förändringar i bolagets marknadsvärde.
+
+**Formel:**
+
+    Andelsvärde simulerad ägare = (Antal aktier simulerad ägare / Totala antalet aktier) × Marknadsvärde (MSEK)
+
+**I kod:**
+
+```js
+shareValue = (simOwnerShares / totalShares) * marketValue
+```
+
+**Exempel:**
+
+Om den simulerade ägaren har 250 000 aktier, totalt antal aktier är 1 000 000 och marknadsvärdet är 20 MSEK:
+
+    (250 000 / 1 000 000) × 20 = 0,25 × 20 = 5 MSEK
+
+Detta värde tar hänsyn till eventuell utspädning vid nyemissioner (om ägaren inte deltar minskar andelen över tid).

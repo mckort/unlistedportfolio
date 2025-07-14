@@ -562,7 +562,7 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     newShares = Math.round(Number(initialNewIssue) * 1_000_000 / pricePerShareBefore);
     totalShares = Number(oldShares) + Number(newShares);
     // simOwnerShares ändras INTE om simulerad ägare inte deltar i emissionen
-    simOwnerShares = newShares;
+    // simOwnerShares = newShares; // FEL: kommentera bort denna rad
   }
   // Beräkna marknadsvärde efter investering med den beräknade substansrabatten
   let marketValue1 = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + currentCash;
@@ -675,7 +675,7 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
     const marketValueAfter = (1 - substanceDiscount / 100) * currentSubstanceValue + currentCash;
     const totalSharesAfter = totalShares;
     const newMarketValueAfter = currentSubstanceValue * (1 - substanceDiscount / 100) + currentCash;
-    const shareValueAfter = currentOwnershipShare * marketValueAfter;
+    const shareValueAfter = (simOwnerShares / totalSharesAfter) * marketValueAfter;
     results.push({
       year,
       step: 'efter investering',
