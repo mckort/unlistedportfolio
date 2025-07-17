@@ -1,3 +1,4 @@
+// TESTFIL: Endast export/CSV-format testas här. Beräkningstester finns i calculation-tests.js
 /**
  * Test suite för CSV-export funktionalitet
  * Verifierar att exportToCSV fungerar korrekt med olika scenarier
@@ -27,6 +28,7 @@ import {
   simulateCustomYears, 
   exportToCSV 
 } from '../src/utils/calculations.js';
+import assert from 'assert';
 
 // Test scenarios
 const testScenarios = [
@@ -154,7 +156,8 @@ async function runExportTests() {
           scenario.aktiePris,
           customResults,
           scenario.yearInputs,
-          simulationIRR
+          simulationIRR,
+          { returnString: true }
         );
         exportSuccess = true;
       } catch (exportError) {
@@ -503,7 +506,8 @@ function testExportManually() {
         10,
         customResults,
         testYearInputs,
-        simulationIRR
+        simulationIRR,
+        { returnString: true }
       );
       console.log('   Export: ✅ Success');
       return true;
@@ -516,6 +520,142 @@ function testExportManually() {
     console.log(`❌ Manual test failed: ${error.message}`);
     return false;
   }
+}
+
+// Nytt test: Jämför IRR och valueAfter10 mellan export och UI-beräkning för investerare år 0
+async function testExportMatchesUIForFirstNewIssueInvestor() {
+  console.log('\n\uD83E\uDDEA Testar att exporten matchar UI för investerare i emission år 0...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 15,
+    substanceDiscount: 0,
+    ownershipShare: 25,
+    newIssueAmount: 10, // Endast år 0
+    managementCosts: 0,
+    substanceIncrease: 0,
+    substanceIncreasePercent: 0
+  };
+  const antalAktier = 1000000;
+  const aktiePris = 10;
+  // Endast år 0 har nyemission, resten 0
+  const yearInputs = [
+    { newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 },
+    ...Array.from({ length: 10 }, () => ({ newIssue: 0, growth: 0, managementCosts: 0, substanceDiscount: 0 }))
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  // UI-logik
+  const invested = 10;
+  const preMoney = customResults[0].marketValue;
+  const oldShares = customResults[0].totalShares;
+  const pricePerShare = preMoney * 1_000_000 / oldShares;
+  const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+  const last = customResults[customResults.length-1];
+  const totalSharesAfter10 = last.totalShares;
+  const expectedValue = (newShares / totalSharesAfter10) * last.marketValue;
+  const expectedIRR = invested === 0 ? null : (Math.pow(expectedValue / invested, 1/10) - 1) * 100;
+  // Export
+  let csvString = '';
+  try {
+    csvString = exportToCSV(
+      params,
+      {},
+      antalAktier,
+      aktiePris,
+      customResults,
+      yearInputs,
+      null,
+      { returnString: true }
+    );
+  } catch (e) {
+    console.log('\u274c Export misslyckades:', e.message);
+    return;
+  }
+  // Extrahera värde och IRR från exporten
+  const valueRow = csvString.split('\n').find(row => row.startsWith('Värde efter 10 år (MSEK);'));
+  const irrRow = csvString.split('\n').find(row => row.startsWith('IRR (10 år);'));
+  const exportedValue = valueRow ? parseFloat(valueRow.split(';')[1].replace(',', '.')) : null;
+  const exportedIRR = irrRow ? parseFloat(irrRow.split(';')[1].replace(',', '.')) : null;
+  // Jämför
+  const valueDiff = Math.abs(exportedValue - expectedValue);
+  const irrDiff = Math.abs(exportedIRR - expectedIRR);
+  if (valueDiff < 0.01 && irrDiff < 0.01) {
+    console.log(`\u2705 Exporten matchar UI! Värde: ${exportedValue.toFixed(4)} MSEK, IRR: ${exportedIRR.toFixed(4)}%`);
+  } else {
+    console.log(`\u274c Skillnad mellan export och UI!`);
+    console.log(`   UI: Värde = ${expectedValue.toFixed(4)} MSEK, IRR = ${expectedIRR.toFixed(4)}%`);
+    console.log(`   Export: Värde = ${exportedValue?.toFixed(4)} MSEK, IRR = ${exportedIRR?.toFixed(4)}%`);
+  }
+}
+
+// --- NYA TESTFALL: emission år 0 och emission år 10 ---
+async function testExportEmissionYear0() {
+  console.log('\n🧪 Testar export för emission år 0...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 10,
+    substanceDiscount: 0,
+    ownershipShare: 50,
+    newIssueAmount: 10,
+    managementCosts: 0,
+    substanceIncrease: 0,
+    substanceIncreasePercent: 0,
+    initialCash: 0
+  };
+  const antalAktier = 1000;
+  const aktiePris = 10;
+  const yearInputs = [
+    { newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 },
+    ...Array.from({ length: 10 }, () => ({ newIssue: 0, growth: 0, managementCosts: 0, substanceDiscount: 0 }))
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  const row0 = customResults.find(r => r.year === 0 && r.step === 'början av året');
+  const expectedNewShares = Math.round(10 * 1_000_000 / (10 * 1_000_000 / 1000));
+  const expectedTotalShares = antalAktier + expectedNewShares;
+  const expectedOwnership = (expectedNewShares / expectedTotalShares) * 100;
+  // Export
+  const csvString = exportToCSV(params, {}, antalAktier, aktiePris, customResults, yearInputs, null, { returnString: true });
+  // Kontrollera att exporten innehåller rätt antal nya aktier och ägarandel
+  assert(csvString.includes(expectedNewShares.toString()), `Export år 0: Saknar rätt antal nya aktier (${expectedNewShares})`);
+  console.log('DEBUG CSV export:', csvString);
+  assert(csvString.includes(expectedTotalShares.toString()), `Export år 0: Saknar rätt totalt antal aktier (${expectedTotalShares})`);
+  assert(csvString.includes(expectedOwnership.toFixed(2)), `Export år 0: Saknar rätt ägarandel (${expectedOwnership.toFixed(2)})`);
+  console.log('✅ Export emission år 0: OK');
+}
+
+async function testExportEmissionYear10() {
+  console.log('\n🧪 Testar export för emission år 10...');
+  const params = {
+    initialMarketValue: 10,
+    initialNav: 10,
+    substanceDiscount: 0,
+    ownershipShare: 50,
+    newIssueAmount: 0,
+    managementCosts: 0,
+    substanceIncrease: 0,
+    substanceIncreasePercent: 0,
+    initialCash: 0
+  };
+  const antalAktier = 1000;
+  const aktiePris = 10;
+  const yearInputs = [
+    ...Array.from({ length: 10 }, () => ({ newIssue: 0, growth: 0, managementCosts: 0, substanceDiscount: 0 })),
+    { newIssue: 10, growth: 0, managementCosts: 0, substanceDiscount: 0 }
+  ];
+  const { results: customResults } = simulateCustomYears(params, yearInputs, antalAktier, aktiePris);
+  const row10 = customResults.find(r => r.year === 10 && r.step === 'början av året');
+  const row9 = customResults.find(r => r.year === 9 && r.step === 'slutet av året');
+  const preMoney = row9.marketValue;
+  const oldShares = row9.totalShares;
+  const pricePerShare = preMoney * 1_000_000 / oldShares;
+  const expectedNewShares = Math.round(10 * 1_000_000 / pricePerShare);
+  const expectedTotalShares = oldShares + expectedNewShares;
+  const expectedOwnership = (expectedNewShares / expectedTotalShares) * 100;
+  // Export
+  const csvString = exportToCSV(params, {}, antalAktier, aktiePris, customResults, yearInputs, null, { returnString: true });
+  assert(csvString.includes(expectedNewShares.toString()), `Export år 10: Saknar rätt antal nya aktier (${expectedNewShares})`);
+  assert(csvString.includes(expectedTotalShares.toString()), `Export år 10: Saknar rätt totalt antal aktier (${expectedTotalShares})`);
+  assert(csvString.includes(expectedOwnership.toFixed(2)), `Export år 10: Saknar rätt ägarandel (${expectedOwnership.toFixed(2)})`);
+  console.log('✅ Export emission år 10: OK');
 }
 
 // Run tests if this file is executed directly
@@ -531,6 +671,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     testFirstNewIssueInvestorSummary();
     testFirstNewIssueInvestorDilution();
     testFirstNewIssueInvestorSummaryDilution();
+    testExportMatchesUIForFirstNewIssueInvestor();
+    await testExportEmissionYear0();
+    await testExportEmissionYear10();
   }
 }
 

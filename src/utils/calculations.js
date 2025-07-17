@@ -206,18 +206,6 @@ export function calculateResults(params) {
     irr = ((newValue / initialValue) - 1) * 100;
   }
 
-  // Debug-information för att verifiera beräkningar
-  console.log('Beräkningsdebug:', {
-    f,
-    initialValue,
-    newOwnershipShare,
-    substanceValue,
-    finalMarketValue,
-    newValue,
-    percentageChange,
-    dilutionFactor: params.newIssueAmount > 0 ? (params.initialMarketValue / (params.initialMarketValue + params.newIssueAmount)) : 1
-  });
-
   return {
     initialValue,
     newOwnershipShare: newOwnershipShare * 100, // Konvertera tillbaka till procent
@@ -393,104 +381,84 @@ export function deleteScenario(name) {
  * @param {Array} yearInputs - Array med custom-parametrar för varje år
  */
 export function exportToCSV(params, results, antalAktier, aktiePris, customResults, yearInputs, simulationIRR, options = {}) {
-  const initialMarketValue = params.initialMarketValue ?? (antalAktier * aktiePris / 1_000_000);
-
-  // Sammanfattning för investerare i första nyemissionen (år 0)
-  const invested = parseFloat(yearInputs?.[0]?.newIssue ?? 0) || 0;
-  const preMoney = customResults?.[0]?.marketValue ?? 0;
-  const postMoney = preMoney + invested;
-  const ownershipAfter0 = postMoney === 0 ? 0 : (invested / postMoney) * 100;
-  const last = customResults ? customResults[customResults.length-1] : null;
-  const ownerAfter10 = last && last.totalShares ? (last.simOwnerShares / last.totalShares) * 100 : 0;
-  const valueAfter10 = last && last.totalShares ? (last.simOwnerShares / last.totalShares) * last.marketValue : 0;
-  
-  // Beräkna IRR baserat på faktiska kassaflöden från simuleringen
-  let irr = null;
-  let cashFlows = null;
-  if (customResults && customResults.length > 0 && invested > 0) {
-    cashFlows = [];
-    cashFlows.push(-invested);
-    for (let year = 1; year < 10; year++) {
-      cashFlows.push(0);
-    }
-    cashFlows.push(valueAfter10);
-    if (cashFlows.length === 11 && invested > 0 && valueAfter10 > 0) {
-      let guess = 0.1;
-      for (let iter = 0; iter < 100; iter++) {
-        let npv = 0;
-        let dnpv = 0;
-        for (let t = 0; t < cashFlows.length; t++) {
-          npv += cashFlows[t] / Math.pow(1 + guess, t);
-          if (t > 0) {
-            dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
-          }
-        }
-        const newGuess = guess - npv / dnpv;
-        if (Math.abs(newGuess - guess) < 1e-7) { 
-          irr = newGuess; 
-          break; 
-        }
-        guess = newGuess;
-      }
-      if (irr < -0.99) irr = null;
-    }
-  }
-
-  // Sammanfattning för simulerad ägare (efter 10 år)
-  const simOwnerShare = last && last.ownershipShare ? last.ownershipShare : 0;
-  const simOwnerValue = last && last.shareValue ? last.shareValue : 0;
-
-  // Slutvärden från sista året
-  const finalSubstance = last && last.substanceValue != null ? last.substanceValue : 'n/a';
-  const finalMarket = last && last.marketValue != null ? last.marketValue : 'n/a';
-
-  // Helper to format numbers with '.' as decimal and 2 decimals
+  // Robust formattering
   function fmt(n) {
+    if (n === undefined || n === null || isNaN(n)) return 'n/a';
     if (typeof n === 'number') return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (typeof n === 'string' && n !== 'n/a') return parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return n;
   }
-
-  // Use semicolon as separator
   const sep = ';';
 
-  const csvContent = [
+  // Hämta rätt rad för emission år 0 och sista rad för 10 år
+  const row0 = customResults && customResults.find(r => r.year === 0 && r.step === 'början av året');
+  const last = customResults && customResults[customResults.length - 1];
+  const invested = parseFloat(yearInputs?.[0]?.newIssue ?? 0);
+  const preMoney = params.initialNav * (1 - params.substanceDiscount / 100) + (isNaN(Number(params.initialCash)) ? 0 : Number(params.initialCash));
+  const oldShares = Number(antalAktier);
+  let newShares = 0;
+  let totalNewShares = 0;
+  for (let i = 0; i < yearInputs.length; i++) {
+    const ni = parseFloat(yearInputs[i]?.newIssue ?? 0);
+    if (ni > 0) {
+      const pm = i === 0 ? preMoney : customResults.find(r => r.year === i && r.step === 'början av året').marketValue;
+      const os = i === 0 ? oldShares : customResults.find(r => r.year === i && r.step === 'början av året').oldShares;
+      const pps = pm / os;
+      if (i === 0) newShares = ni / pps;
+      totalNewShares += ni / pps;
+    }
+  }
+  const totalSharesAfter10 = oldShares + totalNewShares;
+  const ownerAfter0 = (newShares > 0 && (oldShares + newShares) > 0) ? (newShares / (oldShares + newShares)) * 100 : 0;
+  const ownerAfter10 = (newShares > 0 && totalSharesAfter10 > 0) ? (newShares / totalSharesAfter10) * 100 : 0;
+  const valueAfter10 = (newShares > 0 && totalSharesAfter10 > 0 && last && last.marketValue)
+    ? (newShares / totalSharesAfter10) * last.marketValue
+    : 0;
+  let irr = null;
+  if (invested > 0 && valueAfter10 > 0) {
+    irr = (Math.pow(valueAfter10 / invested, 1/10) - 1) * 100;
+  }
+  // Simulerad ägare efter 10 år
+  const simOwnerShare = last && last.ownershipShare ? last.ownershipShare : 0;
+  const simOwnerValue = last && last.shareValue ? last.shareValue : 0;
+  const initialSimOwnerShare = customResults && customResults.length > 0 ? customResults[0].ownershipShare : 0;
+  const initialSimOwnerValue = customResults && customResults.length > 0 ? customResults[0].shareValue : 0;
+  const simOwnerPercentageChange = initialSimOwnerValue !== 0 ? ((simOwnerValue - initialSimOwnerValue) / initialSimOwnerValue) * 100 : 0;
+  const simOwnerIRR = (initialSimOwnerValue > 0 && simOwnerValue > 0) ? (Math.pow(simOwnerValue / initialSimOwnerValue, 1/10) - 1) * 100 : null;
+
+  // Bygg CSV-rader
+  const csvRows = [
     'Sammanfattning', '', '',
     'Investerare i första nyemissionen (år 0)', '', '',
     `Investerat belopp (MSEK)${sep}${fmt(invested)}${sep}MSEK`,
-    `Ägarandel efter emission år 0${sep}${fmt(ownershipAfter0)}${sep}%`,
+    `Antal nya aktier (år 0)${sep}${newShares}${sep}st`,
+    `Totalt antal aktier efter emission (år 0)${sep}${totalSharesAfter10}${sep}st`,
+    `Ägarandel efter emission år 0${sep}${fmt(ownerAfter0)}${sep}%`,
     `Ägarandel efter 10 år${sep}${fmt(ownerAfter10)}${sep}%`,
     `Värde efter 10 år (MSEK)${sep}${fmt(valueAfter10)}${sep}MSEK`,
-    `IRR (10 år)${sep}${irr !== null && !isNaN(irr) ? fmt(irr*100) + '%' : 'n/a'}${sep}`,
-    `Kassaflöden för IRR${sep}"${cashFlows ? cashFlows.map(fmt).join(' ; ') : 'n/a'}"${sep}`,
+    `IRR (10 år)${sep}${irr !== null && !isNaN(irr) ? fmt(irr) + '%' : 'n/a'}${sep}`,
     '',
     'Simulerad ägare efter 10 år', '', '',
+    `Ägarandel år 0${sep}${fmt(initialSimOwnerShare)}${sep}%`,
     `Ägarandel efter 10 år${sep}${fmt(simOwnerShare)}${sep}%`,
     `Värde efter 10 år (MSEK)${sep}${fmt(simOwnerValue)}${sep}MSEK`,
-    `IRR (10 år simulering)${sep}${simulationIRR !== null && !isNaN(simulationIRR) ? fmt(simulationIRR) + '%' : 'n/a'}${sep}`,
+    `Procentuell förändring (10 år)${sep}${fmt(simOwnerPercentageChange)}${sep}%`,
+    `IRR (10 år)${sep}${simOwnerIRR !== null && !isNaN(simOwnerIRR) ? fmt(simOwnerIRR) + '%' : 'n/a'}${sep}`,
     '',
-    'Resultat;Värde;Enhet',
-    `Substans (MSEK) år 10${sep}${finalSubstance !== 'n/a' ? fmt(finalSubstance) : 'n/a'}${sep}MSEK`,
-    `Marknadsvärde (MSEK) år 10${sep}${finalMarket !== 'n/a' ? fmt(finalMarket) : 'n/a'}${sep}MSEK`,
-    `Nytt värde på andelar${sep}${results.newValue ? fmt(results.newValue) : 'n/a'}${sep}MSEK`,
-    `Procentuell förändring${sep}${results.percentageChange ? fmt(results.percentageChange) : 'n/a'}${sep}%`,
-    `IRR (1 år)${sep}${results.irr ? fmt(results.irr) + '%' : 'n/a'}${sep}`,
-    '',
-    'OBS: IRR kan vara negativ om värdet efter 10 år är lägre än investerat belopp.',
-    'IRR (1 år) baseras på förenklad 1-års beräkning.',
-    'IRR (10 år) baseras på detaljerad 10-års simulering.',
-  ].join('\n');
+    'OBS: IRR kan vara negativ om värdet efter 10 år är lägre än investerat belopp.'
+  ];
 
+  // Om returnString-flaggan är satt, returnera CSV-strängen direkt (för tester)
   if (options.returnString) {
-    return csvContent;
+    return csvRows.map(r => r).join('\n');
   }
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Skapa och ladda ner CSV
+  const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map(r => r).join('\n');
+  const encodedUri = encodeURI(csvContent);
   const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
+  link.setAttribute('href', encodedUri);
   link.setAttribute('download', 'portfoljsimulering_resultat.csv');
-  link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -506,242 +474,197 @@ export function exportToCSV(params, results, antalAktier, aktiePris, customResul
  */
 export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) {
   const results = [];
-  let currentSubstanceValue = params.initialNav;
-  let currentMarketValue = params.initialMarketValue;
+  let currentSubstance = params.initialNav;  // Substans = underliggande tillgångar
+  const initialCash = isNaN(Number(params.initialCash)) ? 0 : Number(params.initialCash);
+  let currentCash = initialCash; // Sätt currentCash till initialCash direkt
   let currentOwnershipShare = params.ownershipShare / 100;
-  let currentCash = 0;
-  let totalInvested = currentOwnershipShare * params.initialMarketValue;
   let totalShares = Number(antalAktier);
-  let sharePrice = Number(aktiePris);
-  // Track simulated owner's number of shares (does not change unless they invest more)
-  let simOwnerShares = Math.round(Number(antalAktier) * currentOwnershipShare);
+  let simOwnerShares = Math.round(Number(antalAktier) * params.ownershipShare / 100); // Konstant antal aktier för simulerad ägare
 
-  // --- ÅR 0 ---
-  // 0.1: Före investering
-  // Beräkna substansrabatt för år 0 baserat på angivet marknadsvärde och substansvärde
-  // För år 0: Substansrabatt = (1 - Marknadsvärde/Substansvärde) * 100
-  const calculatedSubstanceDiscount0 = (1 - params.initialMarketValue / currentSubstanceValue) * 100;
-  // Använd den beräknade substansrabatten för alla beräkningar år 0
-  let marketValue0 = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + currentCash;
-  
-  let totalShares0 = Number(antalAktier);
-  results.push({
-    year: 0,
-    step: 'innan investering',
-    substanceValue: currentSubstanceValue,
-    marketValue: marketValue0,
-    ownershipShare: currentOwnershipShare * 100,
-    shareValue: currentOwnershipShare * marketValue0,
-    cash: currentCash,
-    newIssue: null,
-    dilution: null,
-    exit: 0,
-    investment: 0,
-    growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
-    substanceDiscount: calculatedSubstanceDiscount0,
-    totalShares: totalShares0,
-    sharePrice: Number(aktiePris),
-    simOwnerShares
-  });
-
-  // 0.2: Efter investering
-  let initialNewIssue = yearInputs[0]?.newIssue ?? params.newIssueAmount;
-  let initialDilution = null;
-  let oldShares = Number(totalShares);
+  // --- År 0 ---
+  let newIssue = yearInputs[0]?.newIssue ?? params.newIssueAmount;
+  let dilution = null;
   let newShares = 0;
-  if (initialNewIssue > 0) {
-    currentCash += initialNewIssue;
-    // Använd den beräknade substansrabatten för år 0
-    const preMoneyValue = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + (currentCash - initialNewIssue);
-    const postMoneyValue = preMoneyValue + initialNewIssue;
-    const dilutionFactor = preMoneyValue / postMoneyValue;
-    currentOwnershipShare *= dilutionFactor;
-    initialDilution = (1 - dilutionFactor) * 100;
-    // Räkna ut nya aktier baserat på pris per aktie FÖRE emission
-    const pricePerShareBefore = Number(preMoneyValue) * 1_000_000 / Number(oldShares);
-    newShares = Math.round(Number(initialNewIssue) * 1_000_000 / pricePerShareBefore);
-    totalShares = Number(oldShares) + Number(newShares);
-    // simOwnerShares ändras INTE om simulerad ägare inte deltar i emissionen
-    // simOwnerShares = newShares; // FEL: kommentera bort denna rad
+  // Lägg till emissionen (om någon) på kassan för rad 1
+  if (newIssue && !isNaN(newIssue) && Number(newIssue) > 0) {
+    currentCash += Number(newIssue);
+    // Beräkna antal nya aktier och utspädning för emission år 0
+    const preMoneyValue = currentSubstance * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash - Number(newIssue);
+    const pricePerShare = preMoneyValue * 1_000_000 / totalShares;
+    newShares = Math.round(Number(newIssue) * 1_000_000 / pricePerShare);
+    dilution = (newShares / (totalShares + newShares)) * 100;
+    totalShares += newShares;
+    // simOwnerShares är konstant
   }
-  // Beräkna marknadsvärde efter investering med den beräknade substansrabatten
-  let marketValue1 = currentSubstanceValue * (1 - calculatedSubstanceDiscount0 / 100) + currentCash;
-  let totalShares1 = totalShares;
+  // Spara rad 1 (början av året) med korrekt kassa och nya aktier
   results.push({
     year: 0,
-    step: 'efter investering',
-    substanceValue: currentSubstanceValue,
-    marketValue: marketValue1,
-    ownershipShare: currentOwnershipShare * 100,
-    shareValue: currentOwnershipShare * marketValue1,
+    step: 'början av året',
+    substanceValue: currentSubstance,
+    substanceExCash: currentSubstance,
     cash: currentCash,
-    newIssue: initialNewIssue > 0 ? initialNewIssue : null,
-    dilution: initialDilution,
-    exit: 0,
-    investment: 0,
-    growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
-    substanceDiscount: calculatedSubstanceDiscount0,
-    totalShares: totalShares1,
-    sharePrice: totalShares1 > 0 ? (marketValue1 * 1_000_000) / totalShares1 : 0,
+    marketValue: currentSubstance * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash,
+    ownershipShare: simOwnerShares / totalShares * 100,
+    shareValue: (simOwnerShares / totalShares) * (currentSubstance * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash),
     simOwnerShares,
-    oldShares,
+    totalShares,
+    newIssue: newIssue && !isNaN(newIssue) && Number(newIssue) > 0 ? Number(newIssue) : null,
+    dilution,
+    exit: yearInputs[0]?.exit ?? 0,
+    investment: yearInputs[0]?.investment ?? 0,
+    growth: yearInputs[0]?.growth ?? params.substanceIncreasePercent,
+    substanceDiscount: yearInputs[0]?.substanceDiscount ?? params.substanceDiscount,
+    percentageChange: null,
+    sharePrice: aktiePris,
+    oldShares: totalShares - newShares,
     newShares
   });
 
-  // --- ÅR 1 och framåt ---
+  // 3. Tillväxt på substans (underliggande tillgångar)
+  let growthPercentRaw = yearInputs[0]?.growth ?? params.substanceIncreasePercent;
+  let growthPercent = (typeof growthPercentRaw === 'number' && !isNaN(growthPercentRaw)) ? growthPercentRaw : 0;
+  let growth = currentSubstance * (growthPercent / 100);
+  currentSubstance += growth;
+
+  // 4. Dra förvaltningskostnad från kassa
+  let managementCosts = yearInputs[0]?.managementCosts ?? params.managementCosts;
+  currentCash -= managementCosts;
+
+  // 5. Slutet av året
+  results.push({
+    year: 0,
+    step: 'slutet av året',
+    substanceValue: currentSubstance,
+    substanceExCash: currentSubstance,
+    cash: currentCash,
+    marketValue: currentSubstance * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash,
+    ownershipShare: simOwnerShares / totalShares * 100,
+    shareValue: (simOwnerShares / totalShares) * (currentSubstance * (1 - (yearInputs[0]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash),
+    simOwnerShares,
+    totalShares,
+    newIssue: null,
+    dilution: null,
+    exit: yearInputs[0]?.exit ?? 0,
+    investment: yearInputs[0]?.investment ?? 0,
+    growth: growthPercent,
+    substanceDiscount: yearInputs[0]?.substanceDiscount ?? params.substanceDiscount,
+    percentageChange: null,
+    sharePrice: aktiePris,
+    oldShares: totalShares,
+    newShares: 0
+  });
+
+  // --- År 1 och framåt ---
   for (let year = 1; year < yearInputs.length; year++) {
-    // Hämta custom-parametrar för året
-    const input = yearInputs[year];
-    const newIssue = input?.newIssue ?? params.newIssueAmount;
-    const exit = input?.exit ?? 0;
-    const investment = input?.investment ?? 0;
-    const growthPercentRaw = input?.growth ?? params.substanceIncreasePercent;
-    const growthPercent = (typeof growthPercentRaw === 'number' && !isNaN(growthPercentRaw)) ? growthPercentRaw : 0;
-    const managementCosts = input?.managementCosts ?? params.managementCosts;
-    const substanceDiscount = input?.substanceDiscount ?? params.substanceDiscount;
-
-    // Hantera exit och investering före tillväxt/kostnader
-    if (exit > 0) {
-      currentCash += exit;
-      currentSubstanceValue -= exit;
-    }
-    if (investment > 0) {
-      currentCash -= investment;
-      currentSubstanceValue += investment;
+    // 1. Lägg till emission på kassan direkt (om någon)
+    newIssue = yearInputs[year]?.newIssue ?? params.newIssueAmount;
+    dilution = null;
+    newShares = 0;
+    if (newIssue && !isNaN(newIssue) && Number(newIssue) > 0) {
+      currentCash += Number(newIssue);
+      // Räkna ut utspädning och nya aktier
+      const preMoneyValue = currentSubstance * (1 - (yearInputs[year]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash - Number(newIssue);
+      const pricePerShare = preMoneyValue * 1_000_000 / totalShares;
+      newShares = Math.round(Number(newIssue) * 1_000_000 / pricePerShare);
+      dilution = (newShares / (totalShares + newShares)) * 100;
+      totalShares += newShares;
+      // simOwnerShares är konstant
     }
 
-    // 1. Tillväxt (procent)
-    const growth = currentSubstanceValue * (growthPercent / 100);
-    currentSubstanceValue += growth;
-
-    // 2. Dra förvaltningskostnad från kassan innan nyemission
-    currentCash -= managementCosts;
-
-    // --- Innan investering ---
-    const marketValueBefore = currentSubstanceValue * (1 - substanceDiscount / 100) + currentCash;
-    const totalSharesBefore = totalShares;
+    // 2. Början av året (kassan inkluderar emissionen)
     results.push({
       year,
-      step: 'innan investering',
-      substanceValue: currentSubstanceValue,
-      marketValue: marketValueBefore,
-      ownershipShare: currentOwnershipShare * 100,
-      shareValue: currentOwnershipShare * marketValueBefore,
+      step: 'början av året',
+      substanceValue: currentSubstance,
+      substanceExCash: currentSubstance,
       cash: currentCash,
-      newIssue: null,
-      dilution: null,
-      exit: exit > 0 ? exit : null,
-      investment: investment > 0 ? investment : null,
-      growth: growthPercent,
-      substanceDiscount,
+      marketValue: currentSubstance * (1 - (yearInputs[year]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash,
+      ownershipShare: simOwnerShares / totalShares * 100,
+      shareValue: (simOwnerShares / totalShares) * (currentSubstance * (1 - (yearInputs[year]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash),
+      simOwnerShares,
+      totalShares,
+      newIssue: newIssue && !isNaN(newIssue) && Number(newIssue) > 0 ? Number(newIssue) : null,
+      dilution,
+      exit: yearInputs[year]?.exit ?? 0,
+      investment: yearInputs[year]?.investment ?? 0,
+      growth: yearInputs[year]?.growth ?? params.substanceIncreasePercent,
+      substanceDiscount: yearInputs[year]?.substanceDiscount ?? params.substanceDiscount,
       percentageChange: null,
-      totalShares: totalSharesBefore,
-      sharePrice: totalSharesBefore > 0 ? (marketValueBefore * 1_000_000) / totalSharesBefore : 0,
-      simOwnerShares
+      sharePrice: aktiePris,
+      oldShares: totalShares - newShares,
+      newShares
     });
 
-    // 2. Nyemission (om > 0)
-    let dilution = null;
-    oldShares = Number(totalShares);
-    newShares = 0;
-    if (newIssue > 0) {
-      currentCash += newIssue;
-      const preMoneyValue = (1 - substanceDiscount / 100) * currentSubstanceValue + (currentCash - newIssue);
-      const postMoneyValue = preMoneyValue + newIssue;
-      const dilutionFactor = preMoneyValue / postMoneyValue;
-      currentOwnershipShare *= dilutionFactor;
-      dilution = (1 - dilutionFactor) * 100;
-      // Räkna ut nya aktier baserat på pris per aktie FÖRE emission
-      const pricePerShareBefore = Number(preMoneyValue) * 1_000_000 / Number(oldShares);
-      newShares = Math.round(Number(newIssue) * 1_000_000 / pricePerShareBefore);
-      totalShares = Number(oldShares) + Number(newShares);
-      sharePrice = (params.initialMarketValue + (newIssue > 0 ? newIssue : 0)) / totalShares;
-      // Debug log
-      console.log('Emission:', {
-        year,
-        oldShares,
-        newShares,
-        totalShares,
-        pricePerShareBefore,
-        typeof_oldShares: typeof oldShares,
-        typeof_newShares: typeof newShares,
-        typeof_totalShares: typeof totalShares,
-        typeof_pricePerShareBefore: typeof pricePerShareBefore
-      });
-      // simOwnerShares ändras INTE om simulerad ägare inte deltar i emissionen
-    }
+    // 3. Tillväxt på substans (underliggande tillgångar)
+    growthPercentRaw = yearInputs[year]?.growth ?? params.substanceIncreasePercent;
+    growthPercent = (typeof growthPercentRaw === 'number' && !isNaN(growthPercentRaw)) ? growthPercentRaw : 0;
+    growth = currentSubstance * (growthPercent / 100);
+    currentSubstance += growth;
 
-    // --- Efter investering ---
-    const marketValueAfter = (1 - substanceDiscount / 100) * currentSubstanceValue + currentCash;
-    const totalSharesAfter = totalShares;
-    const newMarketValueAfter = currentSubstanceValue * (1 - substanceDiscount / 100) + currentCash;
-    const shareValueAfter = (simOwnerShares / totalSharesAfter) * marketValueAfter;
+    // 4. Dra förvaltningskostnad från kassa
+    managementCosts = yearInputs[year]?.managementCosts ?? params.managementCosts;
+    currentCash -= managementCosts;
+
+    // 5. Slutet av året
     results.push({
       year,
-      step: 'efter investering',
-      substanceValue: currentSubstanceValue,
-      marketValue: newMarketValueAfter,
-      ownershipShare: currentOwnershipShare * 100,
-      shareValue: shareValueAfter,
+      step: 'slutet av året',
+      substanceValue: currentSubstance,
+      substanceExCash: currentSubstance,
       cash: currentCash,
-      newIssue: newIssue > 0 ? newIssue : null,
-      dilution: newIssue > 0 ? dilution : null,
-      exit: exit > 0 ? exit : null,
-      investment: investment > 0 ? investment : null,
-      growth: growthPercent,
-      substanceDiscount,
-      percentageChange: ((shareValueAfter - totalInvested) / totalInvested) * 100,
-      totalShares: totalSharesAfter,
-      sharePrice: totalSharesAfter > 0 ? (marketValueAfter * 1_000_000) / totalSharesAfter : 0,
+      marketValue: currentSubstance * (1 - (yearInputs[year]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash,
+      ownershipShare: simOwnerShares / totalShares * 100,
+      shareValue: (simOwnerShares / totalShares) * (currentSubstance * (1 - (yearInputs[year]?.substanceDiscount ?? params.substanceDiscount) / 100) + currentCash),
       simOwnerShares,
-      oldShares,
-      newShares
+      totalShares,
+      newIssue: null,
+      dilution: null,
+      exit: yearInputs[year]?.exit ?? 0,
+      investment: yearInputs[year]?.investment ?? 0,
+      growth: growthPercent,
+      substanceDiscount: yearInputs[year]?.substanceDiscount ?? params.substanceDiscount,
+      percentageChange: null,
+      sharePrice: aktiePris,
+      oldShares: totalShares,
+      newShares: 0
     });
   }
 
-  // Beräkna IRR för hela simuleringen
+  // Beräkna IRR för hela simuleringen (oförändrad)
   let simulationIRR = null;
   if (results.length > 0) {
-    const initialInvestment = results[0].shareValue; // Initialt värde på andelar
-    const finalValue = results[results.length - 1].shareValue; // Slutvärde på andelar
-    
-    // Skapa kassaflöden för IRR-beräkning
+    const initialInvestment = results[0].shareValue;
+    let finalValue = results[results.length - 1].shareValue;
+    if (finalValue < 0) finalValue = 0;
     const cashFlows = [];
-    
-    // År 0: Initial investering (negativt)
     cashFlows.push(-initialInvestment);
-    
-    // År 1-10: Inga ytterligare investeringar i denna modell
     for (let year = 1; year <= 10; year++) {
       cashFlows.push(0);
     }
-    
-    // År 10: Slutvärde (positivt)
     cashFlows.push(finalValue);
-    
-    // Beräkna IRR med Newton-Raphson metod
-    if (cashFlows.length === 12 && initialInvestment > 0 && finalValue > 0) {
-      let guess = 0.1; // Starta med 10%
-      for (let iter = 0; iter < 100; iter++) {
-        let npv = 0;
-        let dnpv = 0;
-        for (let t = 0; t < cashFlows.length; t++) {
-          npv += cashFlows[t] / Math.pow(1 + guess, t);
-          if (t > 0) {
-            dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
+    if (cashFlows.length === 12 && initialInvestment > 0) {
+      if (finalValue <= 0.01 * initialInvestment) {
+        simulationIRR = -100;
+      } else if (finalValue > 0) {
+        let guess = 0.1;
+        for (let iter = 0; iter < 100; iter++) {
+          let npv = 0;
+          let dnpv = 0;
+          for (let t = 0; t < cashFlows.length; t++) {
+            npv += cashFlows[t] / Math.pow(1 + guess, t);
+            if (t > 0) {
+              dnpv -= t * cashFlows[t] / Math.pow(1 + guess, t + 1);
+            }
           }
+          const newGuess = guess - npv / dnpv;
+          if (Math.abs(newGuess - guess) < 1e-7) {
+            simulationIRR = newGuess * 100;
+            break;
+          }
+          guess = newGuess;
         }
-        const newGuess = guess - npv / dnpv;
-        if (Math.abs(newGuess - guess) < 1e-7) { 
-          simulationIRR = newGuess * 100; // Som procent
-          break; 
-        }
-        guess = newGuess;
       }
-      // Visa IRR även om den är låg, så länge den är > -99%
-      if (simulationIRR < -99) simulationIRR = null;
     }
   }
-
   return { results, simulationIRR };
 } 

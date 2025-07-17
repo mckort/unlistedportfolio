@@ -67,6 +67,7 @@ function App() {
   const defaultParams = {
     initialNav: 50,            // MSEK
     initialMarketValue: 10,    // MSEK (nu användarinput)
+    initialCash: 0,            // MSEK (nytt fält)
     substanceDiscount: 80,     // %
     ownershipShare: 10,        // %
     newIssueAmount: 5,         // MSEK
@@ -136,9 +137,13 @@ function App() {
 
   // Hantera input-ändringar med realtidsuppdatering
   const handleInputChange = (field, value) => {
-    // Hantera tomma fält: spara som '' i state
-    const isEmpty = value === '';
-    const numValue = isEmpty ? '' : parseFloat(value);
+    // Hantera tomma fält eller ogiltiga värden: spara som 0 i state för initialCash och substanceDiscount
+    let numValue;
+    if (field === 'initialCash' || field === 'substanceDiscount') {
+      numValue = value === '' || isNaN(Number(value)) ? 0 : parseFloat(value);
+    } else {
+      numValue = value === '' ? '' : parseFloat(value);
+    }
     setParams(prev => ({
       ...prev,
       [field]: numValue
@@ -247,9 +252,16 @@ function App() {
   // Hantera ändring i tabellens inputfält
   const handleYearInputChange = (year, field, value) => {
     setYearInputs(prev => {
-      const updated = prev.map((row, i) =>
-        i === year ? { ...row, [field]: value === '' ? '' : parseFloat(value) } : row
-      );
+      const updated = prev.map((row, i) => {
+        if (i === year) {
+          let v = value;
+          if (field === 'substanceDiscount') {
+            v = value === '' || isNaN(Number(value)) ? 0 : parseFloat(value);
+          }
+          return { ...row, [field]: v };
+        }
+        return row;
+      });
       return updated;
     });
   };
@@ -505,11 +517,11 @@ function App() {
     if (!customResults) return null;
 
     const datasets = [];
-    
-    // Dataset 1: Original investerare (från år 0)
+    // OBS: Vi använder 'början av året' istället för 'efter investering' eftersom simulateCustomYears aldrig skapar 'efter investering'-rader.
+    // Detta gör att grafen visar datapunkter direkt efter emission, vilket är det närmaste "efter investering" i denna simulering.
     datasets.push({
       label: 'Original investerare (år 0)',
-      data: customResults.filter(r => r.step === 'efter investering').map(result => ({
+      data: customResults.filter(r => r.step === 'början av året').map(result => ({
         x: result.year,
         y: result.percentageChange,
         newIssue: result.newIssue,
@@ -537,24 +549,20 @@ function App() {
       '#6366f1', // Indigo
       '#f43f5e'  // Rose
     ];
-    
-    // Hitta alla emissioner på 'efter investering'-rader
+    // Hitta alla emissioner på 'början av året'-rader
     customResults.forEach((entryResult, idx) => {
-      if (entryResult.step === 'efter investering' && entryResult.newIssue && entryResult.newIssue > 0) {
+      if (entryResult.step === 'början av året' && entryResult.newIssue && entryResult.newIssue > 0) {
         const entryYear = entryResult.year;
         const entryInvestment = entryResult.newIssue;
-        
         // Beräkna ägarandel för denna investerare
         const preMoneyValue = entryResult.marketValue - entryInvestment; // Marknadsvärde FÖRE emissionen
         const postMoneyValue = entryResult.marketValue; // Marknadsvärde EFTER emissionen
         const initialOwnershipShare = (entryInvestment / postMoneyValue) * 100;
-        
         let currentOwnershipShare = initialOwnershipShare;
         const entryData = [];
-        
         // Följ denna investerare från inträdesåret till år 10
         for (let year = entryYear; year <= 10; year++) {
-          const yearResult = customResults.find(r => r.year === year && r.step === 'efter investering');
+          const yearResult = customResults.find(r => r.year === year && r.step === 'början av året');
           if (yearResult) {
             // Utspäd endast av emissioner EFTER inträdesåret
             if (year > entryYear && yearResult.newIssue && yearResult.newIssue > 0) {
@@ -563,11 +571,9 @@ function App() {
               const dilutionFactor = preMoneyValueDil / postMoneyValueDil;
               currentOwnershipShare *= dilutionFactor;
             }
-            
             // Beräkna nuvarande värde på investerarens andelar
             const currentValue = (currentOwnershipShare / 100) * yearResult.marketValue;
             const percentageChange = ((currentValue - entryInvestment) / entryInvestment) * 100;
-            
             entryData.push({
               x: year,
               y: percentageChange,
@@ -578,7 +584,6 @@ function App() {
             });
           }
         }
-        
         if (entryData.length > 0) {
           const color = colors[entryYear - 1] || '#6b7280';
           datasets.push({
@@ -595,7 +600,6 @@ function App() {
         }
       }
     });
-
     return { datasets };
   };
 
@@ -730,6 +734,18 @@ function App() {
             max="1000"
           />
         </div>
+
+        <div className="form-group">
+        <label htmlFor="initialCash">Initial kassa (MSEK)</label>
+        <input
+          id="initialCash"
+          type="number"
+          value={params.initialCash}
+          onChange={(e) => handleInputChange('initialCash', e.target.value)}
+          step="0.1"
+          min="0"
+        />
+      </div>
       </div>
 
       {/* Felmeddelanden */}
@@ -894,69 +910,67 @@ function App() {
                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.simOwnerShares?.toLocaleString('sv-SE', { maximumFractionDigits: 0 })}</td>
                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.totalShares?.toLocaleString('sv-SE', { maximumFractionDigits: 0 })}</td>
                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                      {result.step === 'efter investering' ? (
+                      {result.step === 'början av året' ? (
                         <input
                           type="number"
-                          value={yearInputs[Math.floor(index/2)]?.newIssue ?? ''}
+                          value={yearInputs[result.year]?.newIssue ?? ''}
                           min="0"
                           step="0.1"
                           style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                          onChange={e => handleYearInputChange(Math.floor(index/2), 'newIssue', e.target.value)}
-                          disabled={index === 0 ? false : false}
+                          onChange={e => handleYearInputChange(result.year, 'newIssue', e.target.value)}
                         />
                       ) : ''}
                     </td>
                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                        {result.year === 0
-                          ? result.substanceDiscount.toFixed(1)
-                          : (
-                      <input
-                        type="number"
-                        value={yearInputs[Math.floor(index/2)]?.substanceDiscount ?? ''}
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                        onChange={e => handleYearInputChange(Math.floor(index/2), 'substanceDiscount', e.target.value)}
-                      />
-                          )
-                        }
-                    </td>
-                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.step === 'efter investering' ? (result.dilution ? result.dilution.toFixed(1) : '-') : ''}</td>
-                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                      {result.step === 'efter investering' ? (
+                      {result.step === 'början av året' ? (
                         <input
                           type="number"
-                          value={yearInputs[Math.floor(index/2)]?.exit ?? ''}
+                          value={yearInputs[result.year]?.substanceDiscount ?? ''}
+                          min="0"
+                          max="100"
+                          step="0.1"
+                          style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                          onChange={e => handleYearInputChange(result.year, 'substanceDiscount', e.target.value)}
+                        />
+                      ) : (result.substanceDiscount?.toFixed(1) ?? '')}
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{result.step === 'slutet av året' ? (result.dilution ? result.dilution.toFixed(1) : '-') : ''}</td>
+                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                      {result.step === 'början av året' ? (
+                        <input
+                          type="number"
+                          value={yearInputs[result.year]?.exit ?? ''}
                           min="0"
                           step="0.1"
                           style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                          onChange={e => handleYearInputChange(Math.floor(index/2), 'exit', e.target.value)}
+                          onChange={e => handleYearInputChange(result.year, 'exit', e.target.value)}
                         />
                       ) : ''}
                     </td>
                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                      {result.step === 'efter investering' ? (
+                      {result.step === 'början av året' ? (
                         <input
                           type="number"
-                          value={yearInputs[Math.floor(index/2)]?.investment ?? ''}
+                          value={yearInputs[result.year]?.investment ?? ''}
                           min="0"
                           step="0.1"
                           style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                          onChange={e => handleYearInputChange(Math.floor(index/2), 'investment', e.target.value)}
+                          onChange={e => handleYearInputChange(result.year, 'investment', e.target.value)}
                         />
                       ) : ''}
                     </td>
                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                      <input
-                        type="number"
-                        value={yearInputs[Math.floor(index/2)]?.growth ?? ''}
-                        min="-100"
-                        max="1000"
-                        step="0.1"
-                        style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
-                        onChange={e => handleYearInputChange(Math.floor(index/2), 'growth', e.target.value)}
-                      />
+                      {result.step === 'början av året' ? (
+                        <input
+                          type="number"
+                          value={yearInputs[result.year]?.growth ?? ''}
+                          min="-100"
+                          max="1000"
+                          step="0.1"
+                          style={{ width: 50, fontSize: '0.8rem', padding: '2px' }}
+                          onChange={e => handleYearInputChange(result.year, 'growth', e.target.value)}
+                        />
+                      ) : (result.growth?.toFixed(1) ?? '')}
                     </td>
                     <td style={{ 
                       textAlign: 'center', 
@@ -991,44 +1005,69 @@ function App() {
               <div className="result-value">{(() => {
                 // Ägarandel efter emission år 0 (nya investeraren)
                 const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
-                const preMoney = customResults[0].marketValue;
-                const postMoney = preMoney + invested;
-                if (postMoney === 0) return '0.00';
-                return ((invested / postMoney) * 100).toFixed(2);
-              })()}%</div>
+                // Korrekt pre-money: substans * (1 - rabatt) + initialCash
+                const preMoney = params.initialNav * (1 - params.substanceDiscount / 100) + (isNaN(Number(params.initialCash)) ? 0 : Number(params.initialCash));
+                const oldShares = Number(antalAktier);
+                if (!oldShares || invested === 0) return '0.00%';
+                const pricePerShare = preMoney / oldShares;
+                const newShares = invested / pricePerShare;
+                const postShares = oldShares + newShares;
+                const ownership = (newShares / postShares) * 100;
+                return ownership.toFixed(2) + '%';
+              })()}</div>
               <div className="result-label">Ägarandel efter emission år 0</div>
             </div>
             <div className="result-item">
               <div className="result-value">{(() => {
-                // Ägarandel efter 10 år (nya investeraren, korrekt utspädd)
+                // Ägarandel efter 10 år (nya investeraren, exakt utspädd enligt simuleringen)
                 const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
-                const preMoney = customResults[0].marketValue;
-                if (!customResults[0].totalShares) return '0.00';
-                const oldShares = customResults[0].totalShares;
-                const pricePerShare = preMoney * 1_000_000 / oldShares;
-                const newShares = Math.round(invested * 1_000_000 / pricePerShare);
-                // Totalt antal aktier efter 10 år (inklusive alla emissioner)
-                const last = customResults[customResults.length-1];
-                if (!last) return 'n/a';
-                const totalSharesAfter10 = last.totalShares;
-                if (!totalSharesAfter10) return 'n/a';
-                return ((newShares / totalSharesAfter10) * 100).toFixed(2);
-              })()}%</div>
+                const oldShares = Number(antalAktier);
+                if (!oldShares || invested === 0) return '0.00%';
+                let newShares = 0;
+                let totalNewShares = 0;
+                for (let i = 0; i < yearInputs.length; i++) {
+                  const ni = parseFloat(yearInputs[i]?.newIssue ?? 0);
+                  if (ni > 0) {
+                    const row = customResults.find(r => r.year === i && r.step === 'början av året');
+                    if (i === 0) newShares = row?.newShares ?? 0;
+                    totalNewShares += row?.newShares ?? 0;
+                  }
+                }
+                // Fallback: Om newShares för år 0 är 0, räkna ut och lägg till i både newShares och totalNewShares
+                if (newShares === 0 && invested > 0) {
+                  const preMoney = params.initialNav * (1 - params.substanceDiscount / 100) + (isNaN(Number(params.initialCash)) ? 0 : Number(params.initialCash));
+                  const pricePerShare = preMoney / oldShares;
+                  newShares = invested / pricePerShare;
+                  totalNewShares += newShares;
+                }
+                const totalSharesAfter10 = oldShares + totalNewShares;
+                const ownership = (newShares / totalSharesAfter10) * 100;
+                return ownership.toFixed(2) + '%';
+              })()}</div>
               <div className="result-label">Ägarandel efter 10 år</div>
             </div>
             <div className="result-item">
               <div className="result-value">{(() => {
                 // Värde efter 10 år = (nya aktier / totala aktier efter 10 år) * marknadsvärde år 10
                 const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
-                const preMoney = customResults[0].marketValue;
-                if (!customResults[0].totalShares) return '0.00';
-                const oldShares = customResults[0].totalShares;
-                const pricePerShare = preMoney * 1_000_000 / oldShares;
-                const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+                const preMoney = params.initialNav * (1 - params.substanceDiscount / 100) + (isNaN(Number(params.initialCash)) ? 0 : Number(params.initialCash));
+                const oldShares = Number(antalAktier);
+                if (!oldShares || invested === 0) return '0.00';
+                const pricePerShare = preMoney / oldShares;
+                const newShares = invested / pricePerShare;
+                let totalNewShares = 0;
+                for (let i = 0; i < yearInputs.length; i++) {
+                  const ni = parseFloat(yearInputs[i]?.newIssue ?? 0);
+                  if (ni > 0) {
+                    const pm = i === 0 ? preMoney : customResults.find(r => r.year === i && r.step === 'början av året').marketValue;
+                    const os = i === 0 ? oldShares : customResults.find(r => r.year === i && r.step === 'början av året').oldShares;
+                    const pps = pm / os;
+                    totalNewShares += ni / pps;
+                  }
+                }
+                const totalSharesAfter10 = oldShares + totalNewShares;
                 const last = customResults[customResults.length-1];
                 if (!last) return 'n/a';
-                const totalSharesAfter10 = last.totalShares;
-                if (!totalSharesAfter10) return 'n/a';
                 const value = (newShares / totalSharesAfter10) * last.marketValue;
                 return value.toFixed(2);
               })()}</div>
@@ -1038,17 +1077,25 @@ function App() {
               <div className="result-value">{(() => {
                 // IRR (10 år) för investeraren i emissionen år 0
                 const invested = parseFloat(yearInputs[0]?.newIssue ?? 0);
-                const preMoney = customResults[0].marketValue;
-                if (!customResults[0].totalShares) return 'n/a';
-                const oldShares = customResults[0].totalShares;
-                const pricePerShare = preMoney * 1_000_000 / oldShares;
-                const newShares = Math.round(invested * 1_000_000 / pricePerShare);
+                const preMoney = params.initialNav * (1 - params.substanceDiscount / 100) + (isNaN(Number(params.initialCash)) ? 0 : Number(params.initialCash));
+                const oldShares = Number(antalAktier);
+                if (!oldShares || invested === 0) return 'n/a';
+                const pricePerShare = preMoney / oldShares;
+                const newShares = invested / pricePerShare;
+                let totalNewShares = 0;
+                for (let i = 0; i < yearInputs.length; i++) {
+                  const ni = parseFloat(yearInputs[i]?.newIssue ?? 0);
+                  if (ni > 0) {
+                    const pm = i === 0 ? preMoney : customResults.find(r => r.year === i && r.step === 'början av året').marketValue;
+                    const os = i === 0 ? oldShares : customResults.find(r => r.year === i && r.step === 'början av året').oldShares;
+                    const pps = pm / os;
+                    totalNewShares += ni / pps;
+                  }
+                }
+                const totalSharesAfter10 = oldShares + totalNewShares;
                 const last = customResults[customResults.length-1];
                 if (!last) return 'n/a';
-                const totalSharesAfter10 = last.totalShares;
-                if (!totalSharesAfter10) return 'n/a';
                 const value = (newShares / totalSharesAfter10) * last.marketValue;
-                // IRR: investera -invested år 0, få value år 10
                 if (invested === 0) return 'n/a';
                 const irr = Math.pow(value / invested, 1/10) - 1;
                 return (irr * 100).toFixed(2) + '%';
@@ -1064,6 +1111,17 @@ function App() {
         <div className="results">
           <h2>Sammanfattning: Simulerad ägare</h2>
           <div className="results-grid">
+            <div className="result-item">
+              <div className="result-value">{(() => {
+                // Ägarandel år 0 FÖRE emissionen (dvs. initialt)
+                const initialShares = Number(antalAktier);
+                const simOwnerShares = Math.round(initialShares * (params.ownershipShare / 100));
+                if (!initialShares || !simOwnerShares) return 'n/a';
+                const ownership = (simOwnerShares / initialShares) * 100;
+                return ownership.toFixed(2) + '%';
+              })()}</div>
+              <div className="result-label">Ägarandel år 0</div>
+            </div>
             <div className="result-item">
               <div className="result-value">{(() => {
                 const last = customResults[customResults.length-1];
@@ -1090,6 +1148,21 @@ function App() {
                 return percentageChange.toFixed(2) + '%';
               })()}</div>
               <div className="result-label">Procentuell förändring (10 år)</div>
+            </div>
+            <div className="result-item">
+              <div className="result-value">{(() => {
+                // IRR (10 år) för simulerad ägare
+                const last = customResults[customResults.length-1];
+                if (!last) return 'n/a';
+                const initialValue = customResults[0].shareValue;
+                const finalValue = last.shareValue;
+                if (initialValue > 0 && finalValue > 0) {
+                  const irr = (Math.pow(finalValue / initialValue, 1/10) - 1) * 100;
+                  return irr.toFixed(2) + '%';
+                }
+                return 'n/a';
+              })()}</div>
+              <div className="result-label">IRR (10 år)</div>
             </div>
           </div>
         </div>

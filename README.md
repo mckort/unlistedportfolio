@@ -29,6 +29,46 @@ En avancerad webapp för att simulera värdetillväxt och utspädning i en portf
 - **Spara/ladda scenarier** (inklusive alla tabellrader och parametrar)
 - Återställ till standardvärden
 
+## Teststruktur
+
+- `export-tests.js`: Testar endast export/CSV-format och relaterad logik.
+- `calculation-tests.js`: Testar endast beräkningslogik (ägande, IRR, utspädning, etc).
+
+Kör respektive fil separat för att testa olika delar av logiken:
+
+```bash
+node tests/calculation-tests.js
+node tests/export-tests.js
+```
+
+### Testtäckning
+- Testerna täcker nu alla centrala beräkningar, emissioner (år 0 och år 10), utspädning och IRR.
+- `export-tests.js` innehåller även ett test som jämför export och UI för investerare i emission år 0.
+
+### Exempel på testscenarier
+
+- Enkel positiv IRR – grundläggande IRR-beräkning för positiv avkastning
+- Negativ IRR – IRR-beräkning för negativ avkastning
+- Komplex scenario med nyemission och utspädning – IRR med utspädning och komplexa kassaflöden
+- Hög tillväxt scenario – IRR för hög tillväxt över lång tid
+- Stagnation scenario – IRR med negativ tillväxt och kostnader
+- Exit scenario – IRR med partiell exit under simuleringen
+
+### Testrapport och validering
+
+- Sammanfattning: Totalt antal tester, godkända/underkända, framgångsgrad
+- Detaljerad rapport: Resultat för varje testscenario
+- Tolerans används för att hantera små avrundningsfel i beräkningar
+- Exit code: 0 för framgångsgrad ≥80%
+
+### Felsökning
+
+Om tester misslyckas:
+1. Kontrollera att beräkningsfunktionerna fungerar korrekt
+2. Verifiera att Newton-Raphson-metoden konvergerar
+3. Kontrollera kassaflöden i komplexa scenarier
+4. Justera tolerans om nödvändigt
+
 ## Tabellkolumner och Beräkningslogik
 
 - **Initialt marknadsvärde (MSEK):** Sätts alltid av användaren och används som startvärde år 0 i simuleringen.
