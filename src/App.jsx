@@ -257,8 +257,11 @@ function App() {
           let v = value;
           // Robust konvertering för numeriska fält
           if (["exit", "investment", "newIssue", "growth", "managementCosts", "substanceDiscount"].includes(field)) {
-            v = value === '' ? '' : Number(value);
-            if (isNaN(v)) v = 0;
+            if (value === '' || isNaN(Number(value))) {
+              v = 0;
+            } else {
+              v = Number(value);
+            }
           }
           return { ...row, [field]: v };
         }
