@@ -485,6 +485,17 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
   let newIssue = yearInputs[0]?.newIssue ?? params.newIssueAmount;
   let dilution = null;
   let newShares = 0;
+  // Hantera exit och investering före tillväxt/kostnader (år 0)
+  const exit0 = Number(yearInputs[0]?.exit ?? 0);
+  const investment0 = Number(yearInputs[0]?.investment ?? 0);
+  if (exit0 > 0) {
+    currentCash += exit0;
+    currentSubstance -= exit0;
+  }
+  if (investment0 > 0) {
+    currentCash -= investment0;
+    currentSubstance += investment0;
+  }
   // Lägg till emissionen (om någon) på kassan för rad 1
   if (newIssue && !isNaN(newIssue) && Number(newIssue) > 0) {
     currentCash += Number(newIssue);
@@ -556,6 +567,17 @@ export function simulateCustomYears(params, yearInputs, antalAktier, aktiePris) 
 
   // --- År 1 och framåt ---
   for (let year = 1; year < yearInputs.length; year++) {
+    // Hantera exit och investering före tillväxt/kostnader
+    const exit = Number(yearInputs[year]?.exit ?? 0);
+    const investment = Number(yearInputs[year]?.investment ?? 0);
+    if (exit > 0) {
+      currentCash += exit;
+      currentSubstance -= exit;
+    }
+    if (investment > 0) {
+      currentCash -= investment;
+      currentSubstance += investment;
+    }
     // 1. Lägg till emission på kassan direkt (om någon)
     newIssue = yearInputs[year]?.newIssue ?? params.newIssueAmount;
     dilution = null;

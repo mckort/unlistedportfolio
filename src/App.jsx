@@ -255,8 +255,10 @@ function App() {
       const updated = prev.map((row, i) => {
         if (i === year) {
           let v = value;
-          if (field === 'substanceDiscount') {
-            v = value === '' || isNaN(Number(value)) ? 0 : parseFloat(value);
+          // Robust konvertering för numeriska fält
+          if (["exit", "investment", "newIssue", "growth", "managementCosts", "substanceDiscount"].includes(field)) {
+            v = value === '' ? '' : Number(value);
+            if (isNaN(v)) v = 0;
           }
           return { ...row, [field]: v };
         }
